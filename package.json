@@ -1,0 +1,54 @@
+{
+  "name": "peertube-plugin-web-monetization",
+  "description": "Web Monetization PeerTube plugin",
+  "license": "(MIT OR Apache-2.0)",
+  "version": "0.0.2",
+  "author": "Miles DeWitt",
+  "homepage": "https://milesdewitt.com/peertube-web-monetization",
+  "bugs": "https://github.com/samlich/peertube-plugin-web-monetization",
+  "clientScripts": [
+    {
+      "script": "dist/video-watch-client-plugin.js",
+      "scopes": [
+        "video-watch",
+        "embed"
+      ]
+    },
+    {
+      "script": "dist/video-edit-client-plugin.js",
+      "scopes": [
+        "video-edit"
+      ]
+    }
+  ],
+  "css": [
+    "assets/style.css"
+  ],
+  "dependencies": {
+  },
+	"devDependencies": {
+		"@purtuga/esm-webpack-plugin": "^1.0",
+    "webpack": "^4.0",
+    "webpack-cli": "^4.0",
+    "standard": "^14.0"
+  },
+  "engine": {
+    "peertube": "^2.4"
+  },
+  "keywords": [
+    "peertube",
+    "plugin"
+  ],
+  "library": "./main.js",
+  "scripts": {
+    "prepare": "npm run build",
+		"build": "webpack",
+    "test": "standard"
+  },
+  "staticDirs": {
+    "images": "public/images"
+  },
+  "translations": {
+    "de-DE": "./languages/de.json"
+  }
+}
