@@ -1,12 +1,4 @@
-async function register ({
-  registerHook,
-  registerSetting,
-  settingsManager,
-  storageManager,
-  videoCategoryManager,
-  videoLicenceManager,
-  videoLanguageManager
-}) {
+async function register ({registerHook, registerSetting, settingsManager, storageManager, videoCategoryManager, videoLicenceManager, videoLanguageManager}) {
   const paymentPointerField = 'web-monetization-payment-pointer'
   // const minimumCostField = 'web-monetization-minimum-cost'
 
@@ -46,10 +38,8 @@ async function register ({
 }
 
 async function unregister () {
-
 }
 
 module.exports = {
   register,
-  unregister
-}
+unregister}
