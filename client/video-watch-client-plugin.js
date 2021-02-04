@@ -1,10 +1,13 @@
 import { VideoPaid } from './paid.js'
-import { version, hms } from './common.js'
+import { version, hms, paymentPointerField, viewCostField, adSkipCostField } from './common.js'
 
 const tableOfContentsField = 'table-of-contents_parsed'
 
+var ptHelpers = null
 var paid = new VideoPaid()
 var paymentPointer = null
+var viewCost = 0
+var adSkipCost = 0
 
 var unpaid = true
 var paidEnds = null
@@ -20,8 +23,8 @@ var chaptersTrack = null
 var videoEl = null
 
 // `peertubeHelpers` is not available for `embed`
-function register ({ registerHook }) {
-  const paymentPointerField = 'web-monetization-payment-pointer'
+function register ({ registerHook, peertubeHelpers }) {
+  ptHelpers = peertubeHelpers
 
   registerHook({
     target: 'action:video-watch.player.loaded',
@@ -42,14 +45,27 @@ function register ({ registerHook }) {
       return
     }
     paymentPointer = video.pluginData[paymentPointerField]
+    if (video.pluginData[viewCostField] != null && !isNaN(parseFloat(video.pluginData[viewCostField]))) {
+      viewCost = parseFloat(video.pluginData[viewCostField])
+    }
+    if (video.pluginData[adSkipCostField] != null && !isNaN(parseFloat(video.pluginData[adSkipCostField]))) {
+      adSkipCost = parseFloat(video.pluginData[adSkipCostField])
+    }
+    console.log('viewCost ' + viewCost + ' adSkipCost ' + adSkipCost)
 
     chapters = video.pluginData[tableOfContentsField]
     if (chapters == null) {
       console.log('web-monetization: No chapter information from peertube-plugin-chapters plugin data, sponsor skipping not possible.')
     }
 
+    videoEl = player.el().getElementsByTagName('video')[0]
     if (document.monetization === undefined) {
       console.log('peertube-plugin-web-monetization v', version, ' enabled on server, but Web Monetization not supported by user agent. See https://webmonetization.org.')
+      if (0 < viewCost) {
+        console.log('web-monetization: Web Monetization not supported by user agent, but viewCost is ' + viewCost + ' cannot view video')
+        enforceViewCost().then(() => {
+        })
+      }
       return
     }
 
@@ -106,8 +122,6 @@ function register ({ registerHook }) {
         paid.deposit(instant, amount, -assetScale, assetCode, receipt)
       }
     )
-
-    videoEl = player.el_.getElementsByTagName('video')[0]
 
     // Normal state changes
     videoEl.addEventListener('play', (event) => {
@@ -192,6 +206,9 @@ function register ({ registerHook }) {
       updateSpan()
     }
 
+    enforceViewCost().then(() => {
+    })
+
     console.log('web-monetization: Set up. Now waiting on user agent and video to start playing.')
   }
 }
@@ -222,7 +239,13 @@ function disableMonetization () {
 }
 
 function cueChange () {
-  if ((!monetized && unpaid) || chaptersTrack == null) {
+  if (chaptersTrack == null || (!monetized && unpaid)) {
+    return
+  }
+  const xrpPaid = paid.total.xrp()
+  const xrpRequired = adSkipCost * paid.totalTime(videoEl.currentTime)
+  if (xrpPaid < xrpRequired) {
+    // Set some sort of notice
     return
   }
   for (var i = 0; i < chaptersTrack.activeCues.length; i++) {
@@ -309,6 +332,70 @@ function runStartSpan (recurse) {
   }
   updateSpan((recurse || 0) + 1)
   console.log(paid.display())
+}
+
+var lastEnforcement = null
+async function enforceViewCost () {
+  var currentTime = null
+  if (videoEl != null) {
+    currentTime = videoEl.currentTime
+  }
+  // Allow time for Web Monetization to begin
+  if (document.monetization != null &&
+    (paid.totalTime(currentTime) < 6 ||
+    (paid.totalTime(currentTime) < 12 && 0.85 * xrpRequired < xrpPaid)
+    )) {
+    //
+  }else {
+    const xrpPaid = paid.total.xrp()
+    var currentTime = null
+    if (videoEl != null) {
+      currentTime = videoEl.currentTime
+    }
+    const xrpRequired = viewCost * paid.totalTime(currentTime)
+    // Don't repeatedly show the modal if the video is paused
+    if ((xrpPaid < xrpRequired || document.monetization == null) && lastEnforcement != currentTime) {
+      videoEl.pause()
+      lastEnforcement = currentTime
+      if (ptHelpers == null) {
+      }else {
+        var costDisplay
+        if (viewCost < 0.001) {
+          costDisplay = viewCost.toExponential()
+        }else {
+          costDisplay = '' + viewCost
+        }
+        if (document.monetization == null) {
+          ptHelpers.showModal({
+            title: await ptHelpers.translate('Viewing this video requires payment through Web Monetization'),
+            content: await ptHelpers.translate('See <a href="https://webmonetization.org">https://webmonetization.org</a> for more information.') +
+              ' ' + costDisplay + ' XRP/s ' + await ptHelpers.translate('is required.'),
+            close: true
+          })
+        }else {
+          const currentPayRate = xrpPaid / paid.totalTime(currentTime)
+          var paidDisplay
+          if (currentPayRate < 0.001) {
+            paidDisplay = currentPayRate.toExponential()
+          }else {
+            paidDisplay = '' + currentPayRate
+          }
+
+          ptHelpers.showModal({
+            title: await ptHelpers.translate('Viewing this video requires a higher pay rate'),
+            content: await ptHelpers.translate('You have paid ') + paidDisplay + ' XRP/s. ' +
+              await ptHelpers.translate('This video requires ') + costDisplay + ' XRP/s',
+            close: true
+          })
+        }
+        console.log('post modal')
+      }
+    }
+  }
+
+  setTimeout(() => {
+    enforceViewCost().then(() => {
+    })}, 3000)
 }
 
 export { register }

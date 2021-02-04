@@ -1,46 +1,59 @@
 import url from 'url'
+import { version, paymentPointerField, viewCostField, adSkipCostField } from './common.js'
 
-const paymentPointerField = 'web-monetization-payment-pointer'
 var invalidPaymentPointerFormatMsg = 'Invalid payment pointer format.'
 
 // const minimumCostField = 'web-monetization-minimum-cost'
 
 async function register ({ registerVideoField, peertubeHelpers }) {
-  // payment pointer
-  const commonOptions = {
-    name: paymentPointerField,
-    label: await peertubeHelpers.translate('Web Monetization payment pointer'),
-    descriptionHTML: await peertubeHelpers.translate(
-      'Interledger <a href="https://paymentpointers.org/">payment pointer</a> for <a href="https://webmonetization.org/">Web Monetization</a>. In the form of $example.org/account.'
-    ),
-    type: 'input',
-    default: ''
+  // Payment pointer
+  {
+    const commonOptions = {
+      name: paymentPointerField,
+      label: await peertubeHelpers.translate('Web Monetization payment pointer'),
+      descriptionHTML: await peertubeHelpers.translate(
+        'Interledger <a href="https://paymentpointers.org/">payment pointer</a> for <a href="https://webmonetization.org/">Web Monetization</a>. In the form of $example.org/account.'
+      ),
+      type: 'input',
+      default: ''
+    }
+    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
+      const videoFormOptions = { type}
+      registerVideoField(commonOptions, videoFormOptions)
+    }
+    invalidPaymentPointerFormatMsg = await peertubeHelpers.translate(invalidPaymentPointerFormatMsg)
+    finishAddPaymentPointerField()
   }
-  for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-    const videoFormOptions = { type}
-    registerVideoField(commonOptions, videoFormOptions)
-  }
-  invalidPaymentPointerFormatMsg = await peertubeHelpers.translate(invalidPaymentPointerFormatMsg)
-  finishAddPaymentPointerField()
 
-/*
-// minimum cost
-const description = "Minimum cost to watch video"
-const descriptionHTML = await peertubeHelpers.translate(description)
-const commonOptions = {
-  name: minimumCostField,
-  label: await peertubeHelpers.translate("Web Monetization minimum cost"),
-  descriptionHTML: await peertubeHelpers.translate(
-    "ONLY USE FOR TESTING. There is currently no way to request a certain value from the user agent."
-  ),
-  type: "input",
-  default: ""
-}
-for (const type of [ 'upload', 'import-url', 'import-torrent', 'update' ]) {
-    const videoFormOptions = { type }
-    registerVideoField(commonOptions, videoFormOptions)
-}
-*/
+  // View cost
+  {
+    const commonOptions = {
+      name: viewCostField,
+      label: await peertubeHelpers.translate('Minimum payment rate to view (XRP/s)'),
+      descriptionHTML: await peertubeHelpers.translate(''),
+      type: 'input',
+      default: '0'
+    }
+    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
+      const videoFormOptions = { type}
+      registerVideoField(commonOptions, videoFormOptions)
+    }
+  }
+
+  // Ad skip cost
+  {
+    const commonOptions = {
+      name: adSkipCostField,
+      label: await peertubeHelpers.translate('Minimum payment rate to skip ads (XRP/s)'),
+      descriptionHTML: await peertubeHelpers.translate('Payment rates at or above this level will skip chapters with the "Sponsor" tag, labelled using the chapters plugin.'),
+      type: 'input',
+      default: '0'
+    }
+    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
+      const videoFormOptions = { type}
+      registerVideoField(commonOptions, videoFormOptions)
+    }
+  }
 }
 
 function finishAddPaymentPointerField () {
@@ -104,4 +117,4 @@ function validatePaymentPointer (value) {
     parsed.hash == null
 }
 
-export { register}
+export { register }

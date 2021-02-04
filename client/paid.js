@@ -33,6 +33,15 @@ export class Amount {
     other.assets = new Map()
   }
 
+  xrp () {
+    const xrp = this.assets.get('XRP')
+    if (xrp == null) {
+      return 0
+    }else {
+      return xrp.significand * 10 ** xrp.exponent
+    }
+  }
+
   isEmpty () {
     for (const [assetCode, { significand, exponent }] of this.assets) {
       if (significand != 0) {
@@ -180,6 +189,18 @@ export class VideoPaid {
         this.currentSpan.end = Math.max(this.currentSpan.end, instant)
       }
     }
+  }
+
+  totalTime (instant) {
+    var sum = 0
+    for (const span of this.spans) {
+      if (span.end != null) {
+        sum += span.end - span.start
+      }else if (instant != null) {
+        sum += instant - span.start
+      }
+    }
+    return sum
   }
 
   displayTotal () {

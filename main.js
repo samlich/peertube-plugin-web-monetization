@@ -1,7 +1,7 @@
-async function register ({registerHook, registerSetting, settingsManager, storageManager, videoCategoryManager, videoLicenceManager, videoLanguageManager}) {
-  const paymentPointerField = 'web-monetization-payment-pointer'
-  // const minimumCostField = 'web-monetization-minimum-cost'
+const common = require('./client/common.js')
+const { version, paymentPointerField, viewCostField, adSkipCostField } = common
 
+async function register ({registerHook, registerSetting, settingsManager, storageManager, videoCategoryManager, videoLicenceManager, videoLanguageManager}) {
   registerHook({
     target: 'action:api.video.updated',
     handler: ({ video, body }) => {
@@ -10,14 +10,16 @@ async function register ({registerHook, registerSetting, settingsManager, storag
       }
 
       var paymentPointer = body.pluginData[paymentPointerField]
-      if (!paymentPointer) {
+      if (!paymentPointer || paymentPointer.trim() === '') {
+        storageManager.storeData(paymentPointerField + '_v-' + video.id, null)
+        storageManager.storeData(viewCostField + '_v-' + video.id, null)
+        storageManager.storeData(adSkipCostField + '_v-' + video.id, null)
         return
       }
 
-      if (paymentPointer === '') {
-        paymentPointer = null
-      }
-      storageManager.storeData(paymentPointerField + '_v-' + video.id, paymentPointer)
+      storageManager.storeData(paymentPointerField + '_v-' + video.id, paymentPointer.trim())
+      storageManager.storeData(viewCostField + '_v-' + video.id, body.pluginData[viewCostField].trim())
+      storageManager.storeData(adSkipCostField + '_v-' + video.id, body.pluginData[adSkipCostField].trim())
     }
   })
 
@@ -32,6 +34,8 @@ async function register ({registerHook, registerSetting, settingsManager, storag
       }
 
       video.pluginData[paymentPointerField] = await storageManager.getData(paymentPointerField + '_v-' + video.id)
+      video.pluginData[viewCostField] = await storageManager.getData(viewCostField + '_v-' + video.id)
+      video.pluginData[adSkipCostField] = await storageManager.getData(adSkipCostField + '_v-' + video.id)
       return video
     }
   })

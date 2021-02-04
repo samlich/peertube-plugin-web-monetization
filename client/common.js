@@ -1,6 +1,9 @@
-export const version = '0.1.0'
+const version = '0.1.1'
+const paymentPointerField = 'web-monetization-payment-pointer'
+const viewCostField = 'web-monetization-view-cost'
+const adSkipCostField = 'web-monetization-ad-skip-cost'
 
-export function hms (duration) {
+function hms (duration) {
   if (duration == null || window.isNaN(duration)) {
     return '' + duration
   }
@@ -20,3 +23,10 @@ export function hms (duration) {
   }
   return s + 's'
 }
+
+module.exports = {
+  version,
+  paymentPointerField,
+  viewCostField,
+  adSkipCostField,
+hms}
