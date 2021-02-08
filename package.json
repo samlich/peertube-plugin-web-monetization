@@ -2,7 +2,7 @@
   "name": "peertube-plugin-web-monetization",
   "description": "Web Monetization PeerTube plugin",
   "license": "(MIT OR Apache-2.0)",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": "Miles DeWitt",
   "homepage": "https://milesdewitt.com/peertube-web-monetization",
   "repository": "https://github.com/samlich/peertube-plugin-web-monetization",
