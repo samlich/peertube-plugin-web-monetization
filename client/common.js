@@ -1,4 +1,4 @@
-const version = '0.1.4'
+const version = '0.1.5'
 const paymentPointerField = 'web-monetization-payment-pointer'
 const viewCostField = 'web-monetization-view-cost'
 const adSkipCostField = 'web-monetization-ad-skip-cost'

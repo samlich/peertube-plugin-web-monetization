@@ -340,6 +340,8 @@ async function enforceViewCost () {
   if (videoEl != null) {
     currentTime = videoEl.currentTime
   }
+  const xrpPaid = paid.total.xrp()
+  const xrpRequired = viewCost * paid.totalTime(currentTime)
   // Allow time for Web Monetization to begin
   if (document.monetization != null &&
     (paid.totalTime(currentTime) < 6 ||
@@ -347,12 +349,6 @@ async function enforceViewCost () {
     )) {
     //
   }else {
-    const xrpPaid = paid.total.xrp()
-    var currentTime = null
-    if (videoEl != null) {
-      currentTime = videoEl.currentTime
-    }
-    const xrpRequired = viewCost * paid.totalTime(currentTime)
     // Don't repeatedly show the modal if the video is paused
     if ((xrpPaid < xrpRequired || document.monetization == null) && lastEnforcement != currentTime) {
       videoEl.pause()
