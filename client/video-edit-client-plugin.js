@@ -1,5 +1,6 @@
 import url from 'url'
-import { version, paymentPointerField, viewCostField, adSkipCostField } from './common.js'
+import { version, paymentPointerField, receiptServiceField, currencyField, viewCostField, adSkipCostField } from './common.js'
+import { quoteCurrencies } from './paid.js'
 
 var invalidPaymentPointerFormatMsg = 'Invalid payment pointer format.'
 
@@ -25,11 +26,50 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     finishAddPaymentPointerField()
   }
 
+  // Receipt service
+  {
+    const commonOptions = {
+      name: receiptServiceField,
+      label: await peertubeHelpers.translate('Add receipt service to payment pointer (to verify payments)'),
+      descriptionHTML: await peertubeHelpers.translate(''),
+      type: 'input',
+      default: 'true'
+    }
+    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
+      const videoFormOptions = { type}
+      registerVideoField(commonOptions, videoFormOptions)
+    }
+  }
+
+  // Currency
+  {
+    var currencyList = ''
+    var codes = Object.keys(quoteCurrencies)
+    for (var i = 0; i < codes.length; i++) {
+      const currency = quoteCurrencies[codes[i]]
+      if (i != 0) {
+        currencyList += ', '
+      }
+      currencyList += currency.code + ': ' + currency.network
+    }
+    const commonOptions = {
+      name: currencyField,
+      label: await peertubeHelpers.translate('Currency which costs are quoted in'),
+      descriptionHTML: await peertubeHelpers.translate('Choose one of:') + currencyList,
+      type: 'input',
+      default: 'USD'
+    }
+    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
+      const videoFormOptions = { type}
+      registerVideoField(commonOptions, videoFormOptions)
+    }
+  }
+
   // View cost
   {
     const commonOptions = {
       name: viewCostField,
-      label: await peertubeHelpers.translate('Minimum payment rate to view (XRP/s)'),
+      label: await peertubeHelpers.translate('Minimum payment rate to view per 10 minutes'),
       descriptionHTML: await peertubeHelpers.translate(''),
       type: 'input',
       default: '0'
@@ -44,7 +84,7 @@ async function register ({ registerVideoField, peertubeHelpers }) {
   {
     const commonOptions = {
       name: adSkipCostField,
-      label: await peertubeHelpers.translate('Minimum payment rate to skip ads (XRP/s)'),
+      label: await peertubeHelpers.translate('Minimum payment rate to skip ads per 10 minutes'),
       descriptionHTML: await peertubeHelpers.translate('Payment rates at or above this level will skip chapters with the "Sponsor" tag, labelled using the chapters plugin.'),
       type: 'input',
       default: '0'

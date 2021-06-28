@@ -4,7 +4,8 @@ const EsmWebpackPlugin = require('@purtuga/esm-webpack-plugin')
 
 const clientFiles = [
   'video-edit-client-plugin.js',
-  'video-watch-client-plugin.js'
+  'video-watch-client-plugin.js',
+  'common-client-plugin.js'
 ]
 
 const config = clientFiles.map(f => ({
@@ -16,7 +17,18 @@ const config = clientFiles.map(f => ({
     library: 'script',
     libraryTarget: 'var'
   },
-  plugins: [new EsmWebpackPlugin()]
+  plugins: [new EsmWebpackPlugin()],
+  module: {
+    rules: [
+      {
+        test: /\.js$/,
+        use: [
+          'ify-loader',
+          'transform-loader?plotly.js/tasks/compress_attributes.js'
+        ]
+      }
+    ]
+  }
 }))
 
 module.exports = config

@@ -1,5 +1,7 @@
 const version = '0.1.5'
 const paymentPointerField = 'web-monetization-payment-pointer'
+const receiptServiceField = 'web-monetization-receipt-service'
+const currencyField = 'web-monetization-currency'
 const viewCostField = 'web-monetization-view-cost'
 const adSkipCostField = 'web-monetization-ad-skip-cost'
 
@@ -27,6 +29,7 @@ function hms (duration) {
 module.exports = {
   version,
   paymentPointerField,
+  currencyField,
   viewCostField,
   adSkipCostField,
 hms}
