@@ -1,4 +1,4 @@
-const version = '0.1.5'
+const version = '1.0.2'
 const paymentPointerField = 'web-monetization-payment-pointer'
 const receiptServiceField = 'web-monetization-receipt-service'
 const currencyField = 'web-monetization-currency'

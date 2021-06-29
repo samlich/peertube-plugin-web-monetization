@@ -297,10 +297,6 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     var previous
     try {
       previous = await storageManager.getData(storageKey)
-      previous.total.unverifiedReceipts = []
-      for (var i = 0; i < previous.spans; i++) {
-        previous.spans.paid.unverifiedReceipts = []
-      }
     } catch (e) {
       console.error('web-monetization: /stats/view/: Failed to getData view stats: ' + e)
       res.status(500).send('500 Internal Server Error')
