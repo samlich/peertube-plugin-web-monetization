@@ -16,19 +16,19 @@ async function populateBadges (recurse) {
   const names = document.getElementsByClassName('video-miniature-name')
 
   var fetchMonetizationStatus = []
-  
+
   for (var i = 0; i < names.length; i++) {
     if (names[i].classList.contains('web-monetization-badge-checked')) {
       continue
     }
     // Price labels may wrap to second line
-    names[i].style.maxHeight = '3em';
+    names[i].style.maxHeight = '3em'
     if (names[i].tagName.toLowerCase() == 'a') {
       const dest = names[i].href
       const videoUuid = dest.substring(dest.lastIndexOf('/') + 1)
-      if (monetizationStatus[videoUuid] != null ) {
-          var badge = document.createElement('img')
-          badge.style = 'padding-left:0.5em;height:1.5em;'
+      if (monetizationStatus[videoUuid] != null) {
+        var badge = document.createElement('img')
+        badge.style = 'padding-left:0.5em;height:1.5em;'
         if (monetizationStatus[videoUuid].monetization == 'monetized') {
           badge.src = ptHelpers.getBaseStaticRoute() + '/images/wm-icon.svg'
           badge.title = 'Monetized'
@@ -82,7 +82,7 @@ async function populateBadges (recurse) {
               costTag.innerText += ' (' + exchanged.display() + ')'
             }
           }
-          
+
           names[i].append(costTag)
         }
         names[i].classList.add('web-monetization-badge-checked')
@@ -94,7 +94,7 @@ async function populateBadges (recurse) {
 
   if (0 < fetchMonetizationStatus.length) {
     var route = ptHelpers.getBaseStaticRoute()
-    route = route.slice(0, route.lastIndexOf('/') + 1)+'router/monetization_status_bulk'
+    route = route.slice(0, route.lastIndexOf('/') + 1) + 'router/monetization_status_bulk'
 
     var headers = {}
     if (ptHelpers != null) {
@@ -105,7 +105,7 @@ async function populateBadges (recurse) {
       headers = {}
     }
     headers['content-type'] = 'application/json; charset=utf-8'
-    
+
     fetch(route, {
       method: 'POST',
       headers,
@@ -120,9 +120,6 @@ async function populateBadges (recurse) {
         }
       })
   }
-
 }
 
-export {
-  register
-}
+export { register}

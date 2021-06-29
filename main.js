@@ -44,9 +44,9 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
 
       var paymentPointer = await storageManager.getData(paymentPointerField + '_v-' + video.id)
       video.pluginData[receiptServiceField] = await storageManager.getData(receiptServiceField + '_v-' + video.id)
-      //if (receiptService) {
+      // if (receiptService) {
       //  paymentPointer = '$webmonetization.org/api/receipts/'+encodeURIComponent(paymentPointer)
-      //}
+      // }
       video.pluginData[paymentPointerField] = paymentPointer
       video.pluginData[currencyField] = await storageManager.getData(currencyField + '_v-' + video.id)
       video.pluginData[viewCostField] = await storageManager.getData(viewCostField + '_v-' + video.id)
@@ -55,7 +55,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     }
   })
 
-  const router = getRouter();
+  const router = getRouter()
   router.get('/stats/histogram/*', async (req, res) => {
     const videoId = req.path.slice(req.path.lastIndexOf('/') + 1)
 
@@ -63,7 +63,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
     } catch (e) {
-      console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: '+e)
+      console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -77,20 +77,20 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       histogram = await storageManager.getData(histogramKey)
     } catch (e) {
-      console.error('web-monetization: /stats/histogram/: Failed to getData histogram: '+e)
+      console.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    if (histogram == null) {
-      histogram = []
+    if (histogram == null || histogram.parts == null || histogram.history == null) {
+      histogram = { parts: [], history: {} }
     }
 
     res.send({ histogram: histogram })
   })
 
-  async function commitHistogramChanges(video, histogram, changes, subscribed, userStats) {
+  async function commitHistogramChanges (video, histogram, changes, subscribed, userStats) {
     var histogramChanged = false
-    const lastBin = (video.duration / 15) >>0
+    const lastBin = (video.duration / 15) >> 0
     try {
       const currencyCode = await storageManager.getData(currencyField + '_v-' + video.id)
       const currency = quoteCurrencies[currencyCode.toLowerCase()]
@@ -116,29 +116,29 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
               var x = amount.unverified.get(currency.code)
               sum += x.significand * 10 ** x.exponent
             }
-            
+
             histogram.parts[bin.bin] += sum
-            
-            const day = (Date.now() / 86400000) >>0
-            
-            if (histogram.history[''+day] == null) {
-              histogram.history[''+day] = { unknown: 0, subscribed: 0 }
+
+            const day = (Date.now() / 86400000) >> 0
+
+            if (histogram.history['' + day] == null) {
+              histogram.history['' + day] = { unknown: 0, subscribed: 0 }
             }
             if (subscribed) {
-              histogram.history[''+day].subscribed += sum
+              histogram.history['' + day].subscribed += sum
             } else {
-              histogram.history[''+day].unknown += sum
+              histogram.history['' + day].unknown += sum
             }
 
             if (userStats != null && userStats.optOut != null) {
-              if (userStats.channels[''+video.channelId] == null) {
-                userStats.channels[''+video.channelId] = 0
+              if (userStats.channels['' + video.channelId] == null) {
+                userStats.channels['' + video.channelId] = 0
               }
               // this assumes all their videos are in the same currency
               // there will also need to be a per-channel currency, though this is not possible at the moment
-              userStats.channels[''+video.channelId] += sum
+              userStats.channels['' + video.channelId] += sum
             }
-            
+
             if (sum != 0) {
               histogramChanged = true
             }
@@ -150,18 +150,17 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     }
     return histogramChanged
   }
-  
+
   router.post('/stats/histogram_update/*', async (req, res) => {
     var data = req.body
     if (data.histogram.length != 0) {
-    
       const videoId = req.path.slice(req.path.lastIndexOf('/') + 1)
 
       var video
       try {
         video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
       } catch (e) {
-        console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: '+e)
+        console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
         res.status(500).send('500 Internal Server Error')
         return
       }
@@ -175,7 +174,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       try {
         histogram = await storageManager.getData(histogramKey)
       } catch (e) {
-        console.error('web-monetization: /stats/histogram/: Failed to getData histogram: '+e)
+        console.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
         res.status(500).send('500 Internal Server Error')
         return
       }
@@ -191,7 +190,6 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
         console.error('Failed to verify receipts:')
         console.error(e)
       }
-
 
       try {
         const histogramChanged = await commitHistogramChanges(video, histogram, data.histogram, data.subscribed)
@@ -211,17 +209,17 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
-      console.error('web-monetization: /stats/opt_out/: Failed to getAuthUser: '+e)
+      console.error('web-monetization: /stats/opt_out/: Failed to getAuthUser: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    
+
     const userStatsKey = 'stats_user-' + user.id
     var previousUserStats
     try {
       previousUserStats = await storageManager.getData(userStatsKey)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData user stats: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -239,13 +237,40 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
 
     res.send({ optOut: previousUserStats.optOut })
   })
-    
+
+  router.post('/stats/user/channels', async (req, res) => {
+    var user
+    try {
+      user = await peertubeHelpers.user.getAuthUser(res)
+    } catch (e) {
+      console.error('web-monetization: /stats/user/channels: Failed to getAuthUser: ' + e)
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+
+    const userStatsKey = 'stats_user-' + user.id
+    var userStats
+    try {
+      userStats = await storageManager.getData(userStatsKey)
+    } catch (e) {
+      console.error('web-monetization: /stats/user/channels: Failed to getData user stats: ' + e)
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+    if (userStats == null) {
+      userStats = { optOut: false, channels: {} }
+    }
+    res.send({ optOut: userStats.optOut, channels: userStats.channels })
+  })
+
+
+
   router.post('/stats/view/*', async (req, res) => {
     var user
     try {
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getAuthUser: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -255,7 +280,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to video loadByIdOrUUID: '+e)
+      console.error('web-monetization: /stats/view/: Failed to video loadByIdOrUUID: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -277,7 +302,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
         previous.spans.paid.unverifiedReceipts = []
       }
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData view stats: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getData view stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -285,7 +310,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       previousHistogram = await storageManager.getData(histogramKey)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData histogram: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getData histogram: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -293,7 +318,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       previousUserStats = await storageManager.getData(userStatsKey)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData user stats: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -310,13 +335,13 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     }
 
     var histogramChanged = false
-    if (previousHistogram == null) {
+    if (previousHistogram == null || previousHistogram.parts == null || previousHistogram.history == null) {
       previousHistogram = { parts: [], history: {} }
     }
 
     var committedChanges = null
     var storeSerizlied
-    
+
     var receipts = Receipts.deserialize(data.receipts)
     receipts.verified = []
     try {
@@ -324,7 +349,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     } catch(e) {
       console.error(e)
     }
-    
+
     var changes = VideoPaid.deserializeChanges(data.changes)
     const anyChanges = store.commitChanges(changes)
     try {
@@ -363,9 +388,9 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
       user = null
-      console.error('web-monetization: /stats/view/: Failed to getAuthUser: '+e)
+      console.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
     }
-    
+
     var data = req.body
     if (req.body.videos == null || req.body.videos.length == null) {
       res.status(400).send('400 Bad Request')
@@ -405,7 +430,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
           }
         }
       } catch (e) {
-        console.log('failed to get video '+videos[i])
+        console.log('failed to get video ' + videos[i])
         console.log(e)
         if (statuses[videos[i]] == null) {
           statuses[videos[i]] = 'unknown'

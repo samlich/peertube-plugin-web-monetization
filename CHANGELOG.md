@@ -1,3 +1,9 @@
+# 1.0.1 --- Patch
+
+- Display per-channel contributions pie chart
+- Histograms initialized when not logged in are done properly now
+- Video currency defaults to USD if not set
+
 # 1.0.0 --- Stable release
 
 - Add receipt verification to check payments server-side

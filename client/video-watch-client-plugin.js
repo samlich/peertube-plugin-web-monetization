@@ -52,7 +52,7 @@ function register ({ registerHook, peertubeHelpers }) {
   registerHook({
     target: 'action:embed.player.loaded',
     handler: ({ player, video, videojs }) => {
-      baseStaticRoute = video.originInstanceUrl+'/'
+      baseStaticRoute = video.originInstanceUrl + '/'
       setup(player, video, videojs)
     }
   })
@@ -65,9 +65,9 @@ function register ({ registerHook, peertubeHelpers }) {
     videoId = video.id
     paymentPointer = video.pluginData[paymentPointerField]
     if (video.pluginData[receiptServiceField] == true || video.pluginData[receiptServiceField] == 'true') {
-      paymentPointer = '$webmonetization.org/api/receipts/'+encodeURIComponent(paymentPointer)
+      paymentPointer = '$webmonetization.org/api/receipts/' + encodeURIComponent(paymentPointer)
     }
-    videoQuoteCurrency = video.pluginData[currencyField]
+    videoQuoteCurrency = video.pluginData[currencyField] || 'USD'
     videoQuoteCurrencyObj = quoteCurrencies[videoQuoteCurrency.toLowerCase()]
     if (video.pluginData[viewCostField] != null && !isNaN(parseFloat(video.pluginData[viewCostField]))) {
       // 600 to convert from per 10 min to per second
@@ -263,7 +263,7 @@ function register ({ registerHook, peertubeHelpers }) {
           currencySelect.selectedIndex = i
         }
       }
-      currencySelect.addEventListener('change', function() {
+      currencySelect.addEventListener('change', function () {
         var assetCode = this.value
         var currency = quoteCurrencies[assetCode.toLowerCase()]
         if (currency != null) {
@@ -276,7 +276,7 @@ function register ({ registerHook, peertubeHelpers }) {
       optOut.classList.add('peertube-button')
       optOut.classList.add('grey-button')
       optOut.textContent = 'Opt-out and delete data'
-      optOut.addEventListener('click', function() {
+      optOut.addEventListener('click', function () {
         var headers = ptHelpers.getAuthHeader()
         if (headers == null) {
           if (statsTracking) {
@@ -289,7 +289,7 @@ function register ({ registerHook, peertubeHelpers }) {
           }
         } else {
           headers['content-type'] = 'application/json; charset=utf-8'
-          fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1)+'router/stats/opt_out', {
+          fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/opt_out', {
             method: 'POST',
             headers: headers,
             body: JSON.stringify({ optOut: statsTracking })
@@ -308,9 +308,9 @@ function register ({ registerHook, peertubeHelpers }) {
         }
       })
       statsPanel.appendChild(optOut)
-      
+
       statsPanel.appendChild(document.createElement('br'))
-      
+
       console.log(video.account)
       var summary = document.createElement('h4')
       statsPanel.appendChild(summary)
@@ -342,7 +342,7 @@ function register ({ registerHook, peertubeHelpers }) {
       icon.height = '24'
 
       statsButton.appendChild(icon)
-      statsButton.addEventListener('click', function() {
+      statsButton.addEventListener('click', function () {
         if (statsPanel.style.display == 'block') {
           statsPanel.style.display = 'none'
         } else {
@@ -359,7 +359,10 @@ function register ({ registerHook, peertubeHelpers }) {
       var perDayX = null
       var perDayUnknown = null
       var perDaySubscribed = null
-      
+
+      var channelData = null
+      var channelNames = {}
+
       var lastHistogramFetch = null
       var histogramFetchTries = 0
       var updateStatsClosure = async () => {
@@ -375,21 +378,76 @@ function register ({ registerHook, peertubeHelpers }) {
         if (display == null) {
           display = paid.total
         }
-        summary.textContent = 'Paid '+ display.display() + ' for ' + hms(paid.totalTime(videoEl.currentTime)>>0) + ' (' + display.display(paid.totalTime(videoEl.currentTime)) + ')'
+        summary.textContent = 'Paid ' + display.display() + ' for ' + hms(paid.totalTime(videoEl.currentTime) >> 0) + ' (' + display.display(paid.totalTime(videoEl.currentTime)) + ')'
 
         {
           try {
             // Refresh data every 6 minutes
             // If fetch fails, try up to 5 times every 15 seconds, then every 6 minutes
             if ((6 * 60 * 1000 < Date.now() - lastHistogramFetch || (0 < histogramFetchTries && histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))
-                 || ((allHistogramX == null && histogramFetchTries == 0) || (histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))) {
+              || ((allHistogramX == null && histogramFetchTries == 0) || (histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))) {
               lastHistogramFetch = Date.now()
               histogramFetchTries += 1
-              
-              var res = await fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1)+'router/stats/histogram/' + videoId, {
+
+              var res = await fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/histogram/' + videoId, {
                 method: 'GET'
               })
               var resData = await res.json()
+
+              try {
+                var headers = ptHelpers.getAuthHeader()
+                if (headers == null) {
+                  channelData = null
+                  channelPlot.style.display = 'none'
+                } else {
+                  var userStatsRes = await fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/user/channels', {
+                    method: 'POST',
+                    headers: headers
+                  })
+                  var userStatsData = await userStatsRes.json()
+                  if (userStatsData.optOut) {
+                    channelData = null
+                    channelPlot.style.display = 'none'
+                  } else {
+                    channelData = { values: [], labels: [], type: 'pie', textinfo: 'label+percent' }
+                    channelPlot.style.display = 'block'
+
+                    var channelList = null
+                    for (const channelId in userStatsData.channels) {
+                      if (channelNames[channelId] == null) {
+                        if (channelList == null) {
+                          var api = baseStaticRoute
+                          api = api.slice(0, api.lastIndexOf('/'))
+                          api = api.slice(0, api.lastIndexOf('/'))
+                          api = api.slice(0, api.lastIndexOf('/'))
+                          api = api.slice(0, api.lastIndexOf('/'))
+                          api = api + '/api/v1'
+                          var channelListRes = await fetch(api + '/video-channels', {
+                            method: 'GET'
+                          })
+                          var channelListData = await channelListRes.json()
+                          channelList = channelListData.data
+                        }
+                        const channelIdInt = Number.parseInt(channelId)
+                        for (var i = 0; i < channelList.length; i++) {
+                          if (channelList[i].id == channelIdInt) {
+                            channelNames[channelId] = channelList[i].displayName
+                            break
+                          }
+                        }
+                      }
+                      channelData.values.push(userStatsData.channels[channelId])
+                      if (channelNames[channelId] != null) {
+                        channelData.labels.push(channelNames[channelId])
+                      } else {
+                        channelData.labels.push(channelId)
+                      }
+                    }
+                  }
+                }
+              } catch(e) {
+                console.error(e)
+              }
 
               histogramFetchTries = 0
 
@@ -399,7 +457,7 @@ function register ({ registerHook, peertubeHelpers }) {
               perDayUnknown = []
               perDaySubscribed = []
               for (const day in resData.histogram.history) {
-                perDayX.push(new Date(Number.parseInt(day)*86400000).toISOString())
+                perDayX.push(new Date(Number.parseInt(day) * 86400000).toISOString())
                 perDayUnknown.push(resData.histogram.history[day].unknown)
                 perDaySubscribed.push(resData.histogram.history[day].subscribed)
               }
@@ -407,10 +465,10 @@ function register ({ registerHook, peertubeHelpers }) {
               totalRevenue = new Amount(true)
               var significand = 0
               for (var i = 0; i < resData.histogram.parts.length; i++) {
-                allHistogramX.push(i*15 / 60)
+                allHistogramX.push(i * 15 / 60)
                 significand += allHistogramY[i]
               }
-            
+
               var exponent = 0
               while (significand * 0.001 < Math.abs(significand - (significand >> 0))) {
                 significand *= 10
@@ -427,12 +485,12 @@ function register ({ registerHook, peertubeHelpers }) {
               } catch (e) {
                 console.error(e)
               }
-              allUserSummary.textContent = 'The video has received '+ totalRevenue.display() + ' overall.'
+              allUserSummary.textContent = 'The video has received ' + totalRevenue.display() + ' overall.'
             }
-          } catch (e){
+          } catch (e) {
             console.error(e)
           }
-          
+
           var histogramX = []
           var histogramData = []
           try {
@@ -450,7 +508,7 @@ function register ({ registerHook, peertubeHelpers }) {
                 var x = a.verified.get(currency.code)
                 sum += x.significand * 10 ** x.exponent
               }
-              histogramX.push(i*15/60)
+              histogramX.push(i * 15 / 60)
               histogramData.push(sum)
             }
           } catch (e) {
@@ -489,8 +547,8 @@ function register ({ registerHook, peertubeHelpers }) {
           var layout = {
             title: 'Contributions to Video at 15 Second Intervals',
             xaxis: { title: 'Position in video (min)' },
-            yaxis: { title: 'Session contributions ('+videoQuoteCurrency+')', rangemode: 'nonnegative', tickformat: 'e' },
-            yaxis2: { title: 'All contributions ('+videoQuoteCurrency+')', rangemode: 'nonnegative', tickformat: 'e', side: 'right', overlaying: 'y' },
+            yaxis: { title: 'Session contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
+            yaxis2: { title: 'All contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e', side: 'right', overlaying: 'y' },
             legend: { orientation: 'h', xanchor: 'right', yanchor: 'top', x: 0.99, y: 0.99 },
             showlegend: true
           }
@@ -499,7 +557,7 @@ function register ({ registerHook, peertubeHelpers }) {
             Plotly.newPlot(histogram, data, layout)
           }
 
-
+          // Per-day
           {
             var unknown = {
               name: 'Unsubscribed users',
@@ -523,7 +581,7 @@ function register ({ registerHook, peertubeHelpers }) {
             var layout = {
               title: 'Contributions to Video by Day',
               xaxis: { title: 'Day' },
-              yaxis: { title: 'Contributions ('+videoQuoteCurrency+')', rangemode: 'nonnegative', tickformat: 'e' },
+              yaxis: { title: 'Contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
               legend: { orientation: 'h', xanchor: 'right', yanchor: 'top', x: 0.99, y: 0.99 }
             }
             if (perDayX != null && perDayX.length != 0) {
@@ -531,11 +589,19 @@ function register ({ registerHook, peertubeHelpers }) {
               Plotly.newPlot(perDayPlot, data, layout)
             }
           }
+
+          // Channel pie
+          if (channelData != null) {
+            channelPlot.style = 'width:50em;height:30em;'
+            Plotly.newPlot(channelPlot, [channelData], {
+              title: 'Per-channel Contributions'
+            })
+          }
         }
       }
-      
+
       interval(updateStatsClosure, 2500, { stopOnError: false })
-      
+
       console.log('web-monetization: Added stats panel')
     }
 
@@ -670,7 +736,7 @@ async function enforceViewCost () {
   if (videoEl != null) {
     currentTime = videoEl.currentTime
   }
-  
+
   const totalTime = paid.totalTime(currentTime)
   const sessionTime = paid.getSessionTime(currentTime)
 
@@ -712,7 +778,7 @@ async function enforceViewCost () {
   // Allow time for Web Monetization to begin
   if (document.monetization != null &&
     (sessionTime < 6 ||
-     (sessionTime < 12 && (0.85 * xrpRequired < xrpPaid || 0.85 * xrpRequiredSession < xrpPaidSession))
+    (sessionTime < 12 && (0.85 * xrpRequired < xrpPaid || 0.85 * xrpRequiredSession < xrpPaidSession))
     )) {
     //
   }else {
@@ -783,7 +849,7 @@ function pushViewedSegments () {
     // Not logged in. Still submit to histogram
     pushViewedSegmentsPendingNonce = paid.nonce
     pushViewedSegmentsPendingSince = Date.now()
-    fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1)+'router/stats/histogram_update/' + videoId, {
+    fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/histogram_update/' + videoId, {
       method: 'POST',
       headers: { 'content-type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ receipts: receipts.serialize(), histogram: changes.histogram, subscribed: false })
@@ -802,7 +868,7 @@ function pushViewedSegments () {
   pushViewedSegmentsPendingNonce = paid.nonce
   pushViewedSegmentsPendingSince = Date.now()
   totalPaidWhenSubmitted = paid.total
-  fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1)+'router/stats/view/' + videoId, {
+  fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/view/' + videoId, {
     method: 'POST',
     headers: headers,
     body: JSON.stringify({ receipts: receipts.serialize(), changes: changes, subscribed: subscribed })
@@ -827,7 +893,7 @@ function pushViewedSegments () {
       } else {
         console.error('totalPaidWhenSubmitted is null')
       }
-      
+
       paid.removeCommittedChanges(VideoPaid.deserializeChanges(data.committedChanges))
       paid.updateState(recvdState)
       pushViewedSegmentsPendingNonce = null

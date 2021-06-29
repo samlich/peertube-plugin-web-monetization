@@ -6,7 +6,7 @@ const { hms } = common
 // Either an actual account or reference value
 // Money cannot be created, other than by `deposit`ing
 // It can be added to reference values, but only moved among actual accounts
-//export
+// export
 class Amount {
   constructor (isReference) {
     this.unverified = new Map()
@@ -23,7 +23,7 @@ class Amount {
   serialize () {
     var ret = {
       isReference: this.isReference,
-      unverifiedReceipts: this.unverifiedReceipts,
+      unverifiedReceipts: this.unverifiedReceipts
     }
     ret.unverified = [...this.unverified]
     ret.verified = [...this.verified]
@@ -49,7 +49,7 @@ class Amount {
     ret.verified = new Map(obj.verified)
     return ret
   }
-  
+
   deposit (significand, exponent, assetCode, verified, receipt) {
     if (this.isReference) {
       throw 'Cannot deposit to reference `Amount`'
@@ -104,7 +104,7 @@ class Amount {
     } else {
       destMap = this.unverified
     }
-    
+
     if (!destMap.has(assetCode)) {
       if (allowOverdraft) {
         destMap.set(assetCode, { significand: 0, exponent: exponent })
@@ -118,15 +118,14 @@ class Amount {
       dest.amount *= 10 ** (dest.exponent - exponent)
       dest.exponent = exponent
     }
-    const subtract = significand * 10 ** (exponent - dest.exponent);
+    const subtract = significand * 10 ** (exponent - dest.exponent)
     if (dest.significand < subtract * 0.999 && !allowOverdraft) {
       throw 'Attempt overdraft `Amount`'
     }
     dest.significand -= subtract
   }
-  
-  async verifyReceipts () {
-  }
+
+  async verifyReceipts () {}
 
   acceptReceipts (receipts) {
     /*while (this.verifiedReceipts.length != 0) {
@@ -137,7 +136,7 @@ class Amount {
       }
     }*/
   }
-  
+
   moveFrom (other) {
     if (this.isReference) {
       throw 'Attempt to move money into reference value.'
@@ -157,7 +156,7 @@ class Amount {
       this.unverifiedReceipts.push(other.unverifiedReceipts.pop())
     }
   }
-  
+
   moveFromMakeReference (other) {
     if (this.isReference) {
       throw 'Attempt to move money into reference value.'
@@ -174,9 +173,9 @@ class Amount {
     }
     for (var i = 0;i < other.unverifiedReceipts.length; i++) {
       this.unverifiedReceipts.push(other.unverifiedReceipts[i])
-    }    
+    }
   }
-  
+
   addFrom (other) {
     if (!this.isReference) {
       throw 'Attempt to add to non-reference money amount.'
@@ -203,7 +202,7 @@ class Amount {
     }
     for (var i = 0;i < other.unverifiedReceipts.length; i++) {
       var removed = false
-      for(var j = 0; j < this.unverifiedReceipts; j++) {
+      for (var j = 0; j < this.unverifiedReceipts; j++) {
         if (this.unverifiedReceipts[j].receipt == verified[i]) {
           this.unverifiedReceipts.splice(j, 1)
           removed = true
@@ -230,7 +229,7 @@ class Amount {
     }
 
     return unverified + verified
-}
+  }
 
   isEmpty () {
     for (const [assetCode, { significand, exponent }] of this.unverified) {
@@ -261,7 +260,7 @@ class Amount {
         var newAssetCode
         var newAmount
         if (base == null) {
-          console.log('Couldn\'t convert from '+assetCode+'. Not found in list.')
+          console.log("Couldn't convert from " + assetCode + '. Not found in list.')
           newAssetCode = assetCode
           newAmount = significand * 10 ** exponent
         } else {
@@ -287,7 +286,7 @@ class Amount {
     }
     return converted
   }
-  
+
   displayInDuration (duration) {
     return this.display(duration)
   }
@@ -303,7 +302,7 @@ class Amount {
     for (const [assetCode, { significand, exponent }] of this.verified) {
       phony.depositUnchecked(significand, exponent, assetCode, false, null)
     }
-    
+
     for (const [assetCode, { significand, exponent }] of phony.unverified) {
       var currency = quoteCurrencies[assetCode.toLowerCase()]
       if (!first) {
@@ -370,7 +369,7 @@ class Receipts {
     if (this.verified.length == 0) {
       return null
     }
-    if (seq != seq >>0) {
+    if (seq != seq >> 0) {
       throw 'Receipt `retrieve` passed non-integer'
     }
     const off = seq - this.verified[0]
@@ -382,10 +381,10 @@ class Receipts {
       }
     } else {
       if (seq < this.verified[0]) {
-        throw 'Asked for receipt '+seq+', but those before '+this.verified[0]+' were discarded'
+        throw 'Asked for receipt ' + seq + ', but those before ' + this.verified[0] + ' were discarded'
       }
       if (this.seq < seq) {
-        throw 'Asked for receipt '+seq+', but the next one is '+this.seq
+        throw 'Asked for receipt ' + seq + ', but the next one is ' + this.seq
       }
       return null
     }
@@ -393,7 +392,7 @@ class Receipts {
 
   async verifyReceipts () {
     if (this.unverified.length != 0) {
-      console.log('RECEIPTS FROM ' + this.unverified[0].seq + ' -> ' + this.unverified[this.unverified.length-1].seq)
+      console.log('RECEIPTS FROM ' + this.unverified[0].seq + ' -> ' + this.unverified[this.unverified.length - 1].seq)
     }
     if (1000 < this.unverified.length) {
       console.error('TOO MANY RECEIPTS')
@@ -405,10 +404,10 @@ class Receipts {
       console.log(receiptData.seq + ' ' + receiptData.receipt)
       try {
         const res = await fetch('https://webmonetization.org/api/receipts/verify',
-                    {
-                      method: 'POST',
-                      body: receiptData.receipt
-                    })
+          {
+            method: 'POST',
+            body: receiptData.receipt
+          })
         if (res.status != 200) {
           if (res.statusText == 'expired receipt') {
             // Funds cannot be verified
@@ -435,7 +434,7 @@ class Receipts {
         console.log('receipt validate data')
         console.log(resObj)
         if (resObj.amount == null) {
-          console.error('web-monetization: Receipt validator didn\'t include `amount`...')
+          console.error("web-monetization: Receipt validator didn't include `amount`...")
           this.verified.push({ receipt: receiptData.receipt, seq: receiptData.seq, verified: false })
           // This should never happen, so... assume we did something wrong and skip that receipt
           continue
@@ -481,7 +480,7 @@ const histogramBinSize = 15
 //   end: Option<float>; Timestamp in video (or null if current span)
 //   paid: Amount; Payments made during this span, both committed nad uncommitted
 //   paidUncommitted: Amount; Payments made during this span not committed
-//export
+// export
 class VideoPaid {
   constructor () {
     this.nonce = VideoPaid.generateNonce()
@@ -506,7 +505,7 @@ class VideoPaid {
     }
     return true
   }
-  
+
   startSpan (instant) {
     if (this.currentSpan != null) {
       console.log('web-monetization: VideoPaid.startSpan called before endSpan, data is lost')
@@ -613,7 +612,7 @@ class VideoPaid {
       }
     }
 
-    const bin = (instant / histogramBinSize) >>0
+    const bin = (instant / histogramBinSize) >> 0
     while (this.histogram.length <= bin) {
       this.histogram.push({ committed: new Amount(false), uncommitted: new Amount(false) })
     }
@@ -680,28 +679,28 @@ class VideoPaid {
   }
 
   static generateNonce () {
-    var nonce = ""
-    var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    var nonce = ''
+    var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
     for (var i = 0; i < 64; i++) {
-        nonce += possible.charAt(Math.floor(Math.random() * possible.length))
+      nonce += possible.charAt(Math.floor(Math.random() * possible.length))
     }
     return nonce
   }
-  
+
   removeCommittedChanges (committed) {
     // committed nonce is null when only histogram (which should be changed)
     if (committed.nonce != null && committed.nonce != this.nonce) {
-      throw '`VideoPaid.removeCommittedChanges` nonces differ '+committed.nonce+' '+this.nonce
+      throw '`VideoPaid.removeCommittedChanges` nonces differ ' + committed.nonce + ' ' + this.nonce
     }
     this.nonce = VideoPaid.generateNonce()
 
     var c = committed
     for (var i = 0; i < c.spans; i++) {
-      var j = 0;
+      var j = 0
       while (j < this.spans.length) {
         if (this.spans[j].change) {
           if ((this.spans[j].start <= c.spans[i].start && c.spans[i].start <= this.spans[j].end)
-              || (this.spans[j].start <= c.spans[i].end && c.spans[i].end <= this.spans[j].end)) {
+            || (this.spans[j].start <= c.spans[i].end && c.spans[i].end <= this.spans[j].end)) {
             // `c` span overlaps `this` span
             this.spans[j].paidUncommitted.subtract(c.spans[i].paidUncommitted)
             if (Math.abs(c.spans[i].start - this.spans[j].start) < 0.01) {
@@ -710,7 +709,7 @@ class VideoPaid {
                 // Ends are the same
                 if (this.spans[j].paidUncommitted.isEmpty()) {
                   this.spans.splice(j, 1)
-                  // `j` stays the same
+                // `j` stays the same
                 } else {
                   // The additional payments must still be committed, leave span marked `change`
                   j++
@@ -791,7 +790,7 @@ class VideoPaid {
         changes.spans.push({
           start: this.spans[i].start,
           end: this.spans[i].end,
-          paidUncommitted: this.spans[i].paidUncommitted.serialize(),
+          paidUncommitted: this.spans[i].paidUncommitted.serialize()
         })
       }
     }
@@ -803,7 +802,7 @@ class VideoPaid {
         changes.histogram.push({ bin: i, uncommitted: this.histogram[i].uncommitted.serialize() })
       }
     }
-    
+
     return changes
   }
 
@@ -814,7 +813,7 @@ class VideoPaid {
     ret.histogram = obj
     return ret
   }
-  
+
   static deserializeChanges (obj) {
     var ret = new VideoPaid()
     // We don't deserialize the histogram, as it is more useful serialized
@@ -828,15 +827,15 @@ class VideoPaid {
         start: from.start,
         end: from.end,
         paid: new Amount(),
-        paidUncommitted: Amount.deserialize(from.paidUncommitted),
+        paidUncommitted: Amount.deserialize(from.paidUncommitted)
       })
     }
-    
+
     return ret
   }
 }
 
-//export
+// export
 class VideoPaidStorage {
   constructor () {
     this.total = new Amount(true)
@@ -865,7 +864,7 @@ class VideoPaidStorage {
       ret.spans.push({
         start: this.spans[i].start,
         end: this.spans[i].end,
-        paid: this.spans[i].paid.serialize(),
+        paid: this.spans[i].paid.serialize()
       })
     }
     return ret
@@ -993,38 +992,38 @@ const quoteCurrencies = {
   eur: { coinGeckoQuote: 'eur', coinGeckoId: null, network: 'Euro', nameSingular: 'Euro', namePlural: 'Euros', code: 'EUR', symbol: '€' },
   gbp: { coinGeckoQuote: 'gbp', coinGeckoId: null, network: 'British Pound', nameSingular: 'Pound', namePlural: 'Pounds', code: 'GBP', symbol: '£' },
   hkd: { coinGeckoQuote: 'hkd', coinGeckoId: null, network: 'Hong Kong dollar', nameSingular: 'dollar', namePlural: 'dollars', code: 'HKD', symbol: 'HK$' },
-/*  huf: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  idr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  ils: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  inr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  jpy: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  krw: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  kwd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  lkr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  mmk: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  mxn: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  myr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  ngn: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  nok: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  nzd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  php: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  pkr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  pln: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  rub: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  sar: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  sek: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  sgd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  thb: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  'try': { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  twd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  uah: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  vef: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  vnd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  zar: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  xdr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  xag: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  xau: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
-  bits: { coinGeckoQuote: 'bits', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },*/
+  /*  huf: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    idr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    ils: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    inr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    jpy: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    krw: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    kwd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    lkr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    mmk: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    mxn: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    myr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    ngn: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    nok: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    nzd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    php: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    pkr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    pln: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    rub: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    sar: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    sek: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    sgd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    thb: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    'try': { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    twd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    uah: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    vef: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    vnd: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    zar: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    xdr: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    xag: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    xau: { coinGeckoQuote: '', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },
+    bits: { coinGeckoQuote: 'bits', coinGeckoId: null, network: '', nameSingular: '', namePlural: '', code: null, symbol: null },*/
   sats: { coinGeckoQuote: 'sats', coinGeckoId: null, network: 'Satoshi', nameSingular: 'Satoshi', namePlural: 'Satoshis', code: 'sat', symbol: null }
 }
 
@@ -1034,21 +1033,21 @@ const interledgerCurrencies = {
   btc: quoteCurrencies['btc'],
   eth: quoteCurrencies['eth'],
   // CoinGecko id is of currency pegged to dollar, though not actual dollar
-  usd: quoteCurrencies['usd'],
-  
+  usd: quoteCurrencies['usd']
+
 }
 
 class Exchange {
   constructor (apiEndpoint) {
     // TODO: Proxy client requests through server, so we don't use their API so much
-    this.apiEndpoint = "https://api.coingecko.com/api" //apiEndpoint
+    this.apiEndpoint = 'https://api.coingecko.com/api' // apiEndpoint
     this.assets = new Map()
   }
 
   static currencyFromInterledgerCode (assetCode) {
     return interledgerCurrencies[assetCode.toLowerCase()]
   }
-  
+
   async getPrice (base, quote) {
     var inverse = false
     if (base.coinGeckoId == null) {
@@ -1099,7 +1098,7 @@ class Exchange {
     var price = baseData.get(quote)
 
     if (price.lastUpdate == null || 4 * 3600 * 1000 < Date.now() - price.lastUpdate) {
-      var res = await fetch(this.apiEndpoint + '/v3/simple/price?ids='+base.coinGeckoId+'&vs_currencies='+quote.coinGeckoQuote, {
+      var res = await fetch(this.apiEndpoint + '/v3/simple/price?ids=' + base.coinGeckoId + '&vs_currencies=' + quote.coinGeckoQuote, {
         method: 'GET',
         headers: { accept: 'application/json' }
       })
@@ -1126,4 +1125,4 @@ module.exports = {
   VideoPaid,
   VideoPaidStorage,
   quoteCurrencies,
-  Exchange}
+Exchange}
