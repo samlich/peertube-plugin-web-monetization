@@ -300,7 +300,7 @@ function register ({ registerHook, peertubeHelpers }) {
       optOut.textContent = 'Opt-out and delete data'
       optOut.addEventListener('click', function () {
         var headers = null
-        if (ptHeaders != null) {
+        if (ptHelpers != null) {
           headers = ptHelpers.getAuthHeader()
         }
         if (headers == null) {
@@ -420,7 +420,7 @@ function register ({ registerHook, peertubeHelpers }) {
 
               try {
                 var headers = null
-                if (ptHeaders != null) {
+                if (ptHelpers != null) {
                   headers = ptHelpers.getAuthHeader()
                 }
                 if (headers == null) {
@@ -867,7 +867,7 @@ function pushViewedSegments () {
   }
 
   var headers = null
-  if (ptHeaders != null) {
+  if (ptHelpers != null) {
     headers = ptHelpers.getAuthHeader()
   }
   if (headers == null) {
