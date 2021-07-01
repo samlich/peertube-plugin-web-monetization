@@ -563,10 +563,10 @@ class VideoPaid {
       if (instant < this.currentSpan.start) {
         console.log('web-monetization: VideoPaid.endSpan called at ' + hms(instant) + ' which is earlier than span start ' + hms(this.currentSpan.start) + ', ignoring it')
       }
-      if (this.currentSpan.end == null) {
-        this.sessionTime += this.instant - this.currentSpan.start
-      } else if (this.currentSpan.end < this.instant) {
-        this.sessionTime += this.instant - this.currentSpan.end
+      if (this.currentSpan.end == null && this.currentSpan.start < instant) {
+        this.sessionTime += instant - this.currentSpan.start
+      } else if (this.currentSpan.end < instant) {
+        this.sessionTime += instant - this.currentSpan.end
       }
       this.currentSpan.end = Math.max(this.currentSpan.end, instant)
     }
@@ -608,7 +608,19 @@ class VideoPaid {
       this.currentSpan.paidUncommitted.deposit(significand, exponent, assetCode, false, receipt)
       this.currentSpan.change = true
       if (instant != null) {
-        this.currentSpan.end = Math.max(this.currentSpan.end, instant)
+        if (this.currentSpan.end == null) {
+          if (this.currentSpan.start < instant) {
+            this.sessionTime += instant - this.currentSpan.start
+          }
+        } else if (this.currentSpan.end < instant) {
+          this.sessionTime += instant - this.currentSpan.end
+        }
+
+        if (this.currentSpan.end == null) {
+          this.currentSpan.end = instant
+        }else {
+          this.currentSpan.end = Math.max(this.currentSpan.end, instant)
+        }
       }
     }
 

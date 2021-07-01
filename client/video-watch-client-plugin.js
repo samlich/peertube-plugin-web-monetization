@@ -77,7 +77,7 @@ function register ({ registerHook, peertubeHelpers }) {
       // 600 to convert from per 10 min to per second
       adSkipCost = parseFloat(video.pluginData[adSkipCostField]) / 600
     }
-    console.log('paymentPointer: ' + paymentPointer + 'viewCost: ' + viewCost + ' adSkipCost: ' + adSkipCost)
+    console.log('paymentPointer: ' + paymentPointer + ' viewCost: ' + viewCost + ' adSkipCost: ' + adSkipCost + ' currency: ' + videoQuoteCurrency)
 
     chapters = video.pluginData[tableOfContentsField]
     if (chapters == null) {
@@ -169,12 +169,30 @@ function register ({ registerHook, peertubeHelpers }) {
       // Update timer
       updateSpan()
     })
+    var preSeekTime = null
+    var preSeekTimestamp = null
+    videoEl.addEventListener('timeupdate', (event) => {
+      if (seeking) {
+        return
+      }
+      var timeDiff = videoEl.currentTime - preSeekTime
+      if (preSeekTime == null || (0 < timeDiff && timeDiff < 0.75)) {
+        var now = Date.now()
+        var timestampDiff = now - preSeekTimestamp
+        if (preSeekTimestamp == null || Math.abs(timestampDiff - timeDiff) < 0.1) {
+          preSeekTime = videoEl.currentTime
+          preSeekTimestamp = now
+        }
+      }
+    })
     videoEl.addEventListener('seeking', (event) => {
       seeking = true
       if (paid.currentSpan != null) {
         // Seems to give time after seeking finished sometimes
         // paid.endSpan(videoEl.currentTime)
-        paid.endSpan()
+        paid.endSpan(preSeekTime)
+        preSeekTime = null
+        preSeekTimestamp = null
       }
       paidEnds = null
       nextPaid = null
@@ -757,9 +775,11 @@ async function enforceViewCost () {
     xrpPaid = paid.total.xrp()
   }
   const xrpRequired = viewCost * totalTime
+  var paidSessionAmount
   var xrpPaidSession
   try {
     const amount = await paid.sessionTotal.inCurrency(exchange, videoQuoteCurrencyObj)
+    paidSessionAmount = amount
     xrpPaidSession = 0
     if (amount.unverified.has(videoQuoteCurrencyObj.code)) {
       var x = amount.unverified.get(videoQuoteCurrencyObj.code)
@@ -772,9 +792,10 @@ async function enforceViewCost () {
   } catch(e) {
     console.error(e)
     xrpPaidSession = paid.sessionTotal.xrp()
+    paidSessionAmount = paid.sessionTotal
   }
-
   const xrpRequiredSession = viewCost * sessionTime
+
   // Allow time for Web Monetization to begin
   if (document.monetization != null &&
     (sessionTime < 6 ||
@@ -788,32 +809,28 @@ async function enforceViewCost () {
       lastEnforcement = currentTime
       if (ptHelpers == null) {
       }else {
-        var costDisplay
-        if (viewCost < 0.001) {
-          costDisplay = viewCost.toExponential()
-        }else {
-          costDisplay = '' + viewCost
+        var costAmount = new Amount(true)
+        var significand = viewCost
+        var exponent = 0
+        while (significand * 0.001 < Math.abs(significand - (significand >> 0))) {
+          significand *= 10
+          exponent -= 1
         }
+        significand >>= 0
+        costAmount.depositUnchecked(significand, exponent, videoQuoteCurrency, true, null)
+
         if (document.monetization == null) {
           ptHelpers.showModal({
             title: await ptHelpers.translate('Viewing this video requires payment through Web Monetization'),
             content: await ptHelpers.translate('See <a href="https://webmonetization.org">https://webmonetization.org</a> for more information.') +
-              ' ' + costDisplay + ' XRP/s ' + await ptHelpers.translate('is required.'),
+              ' ' + costAmount.display(1) + ' ' + await ptHelpers.translate('is required.'),
             close: true
           })
         }else {
-          const currentPayRate = xrpPaidSession / sessionTime
-          var paidDisplay
-          if (currentPayRate < 0.001) {
-            paidDisplay = currentPayRate.toExponential()
-          }else {
-            paidDisplay = '' + currentPayRate
-          }
-
           ptHelpers.showModal({
             title: await ptHelpers.translate('Viewing this video requires a higher pay rate'),
-            content: await ptHelpers.translate('You have paid ') + paidDisplay + ' XRP/s. ' +
-              await ptHelpers.translate('This video requires ') + costDisplay + ' XRP/s',
+            content: await ptHelpers.translate('You have paid ') + paidSessionAmount.display(sessionTime) + '. ' +
+              await ptHelpers.translate('This video requires ') + costAmount.display(1) + '.',
             close: true
           })
         }
