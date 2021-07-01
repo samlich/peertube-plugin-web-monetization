@@ -52,7 +52,13 @@ function register ({ registerHook, peertubeHelpers }) {
   registerHook({
     target: 'action:embed.player.loaded',
     handler: ({ player, video, videojs }) => {
-      baseStaticRoute = video.originInstanceUrl + '/'
+      // `peertubeHelpers` is not available for embed, make best attempt at getting base route
+      // `originInstanceUrl` also doesn't exist for embedded videos
+      // baseStaticRoute = video.originInstanceUrl + '/plugins/web-monetization/' + version + '/router'
+      baseStaticRoute = video.channel.url
+      baseStaticRoute = baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/'))
+      baseStaticRoute = baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/'))
+      baseStaticRoute += '/plugins/web-monetization/' + version + '/router'
       setup(player, video, videojs)
     }
   })
@@ -295,7 +301,10 @@ function register ({ registerHook, peertubeHelpers }) {
       optOut.classList.add('grey-button')
       optOut.textContent = 'Opt-out and delete data'
       optOut.addEventListener('click', function () {
-        var headers = ptHelpers.getAuthHeader()
+        var headers = null
+        if (ptHeaders != null) {
+          headers = ptHelpers.getAuthHeader()
+        }
         if (headers == null) {
           if (statsTracking) {
             statsTracking = false
@@ -413,7 +422,10 @@ function register ({ registerHook, peertubeHelpers }) {
               var resData = await res.json()
 
               try {
-                var headers = ptHelpers.getAuthHeader()
+                var headers = null
+                if (ptHeaders != null) {
+                  headers = ptHelpers.getAuthHeader()
+                }
                 if (headers == null) {
                   channelData = null
                   channelPlot.style.display = 'none'
@@ -858,7 +870,10 @@ function pushViewedSegments () {
     subscribed = true
   }
 
-  var headers = ptHelpers.getAuthHeader()
+  var headers = null
+  if (ptHeaders != null) {
+    headers = ptHelpers.getAuthHeader()
+  }
   if (headers == null) {
     if (!statsTracking) {
       return
