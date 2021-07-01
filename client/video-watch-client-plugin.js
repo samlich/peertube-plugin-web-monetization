@@ -39,13 +39,11 @@ function register ({ registerHook, peertubeHelpers }) {
   ptHelpers = peertubeHelpers
   if (ptHelpers != null) {
     baseStaticRoute = ptHelpers.getBaseStaticRoute()
-    console.log(baseStaticRoute)
   }
 
   registerHook({
     target: 'action:video-watch.player.loaded',
     handler: ({ player, video, videojs }) => {
-      console.log(video)
       setup(player, video, videojs)
     }
   })
@@ -83,7 +81,7 @@ function register ({ registerHook, peertubeHelpers }) {
       // 600 to convert from per 10 min to per second
       adSkipCost = parseFloat(video.pluginData[adSkipCostField]) / 600
     }
-    console.log('paymentPointer: ' + paymentPointer + ' viewCost: ' + viewCost + ' adSkipCost: ' + adSkipCost + ' currency: ' + videoQuoteCurrency)
+    console.log('web-monetization: paymentPointer: ' + paymentPointer + ' viewCost: ' + viewCost + ' adSkipCost: ' + adSkipCost + ' currency: ' + videoQuoteCurrency)
 
     chapters = video.pluginData[tableOfContentsField]
     if (chapters == null) {
@@ -338,7 +336,6 @@ function register ({ registerHook, peertubeHelpers }) {
 
       statsPanel.appendChild(document.createElement('br'))
 
-      console.log(video.account)
       var summary = document.createElement('h4')
       statsPanel.appendChild(summary)
 
@@ -757,7 +754,6 @@ function runStartSpan (recurse) {
     disableMonetization()
   }
   updateSpan((recurse || 0) + 1)
-  console.log(paid.display())
 }
 
 var lastEnforcement = null
