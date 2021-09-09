@@ -812,7 +812,7 @@ async function enforceViewCost () {
     //
   }else {
     // Don't repeatedly show the modal if the video is paused
-    if ((xrpPaid < xrpRequired || xrpPaidSession < xrpRequiredSession || document.monetization == null) && lastEnforcement != currentTime) {
+    if ((xrpPaid < xrpRequired && xrpPaidSession < xrpRequiredSession || document.monetization == null) && lastEnforcement != currentTime) {
       videoEl.pause()
       lastEnforcement = currentTime
       if (ptHelpers == null) {
