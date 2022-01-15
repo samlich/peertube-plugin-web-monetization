@@ -43,20 +43,21 @@ async function register ({ registerVideoField, peertubeHelpers }) {
 
   // Currency
   {
-    var currencyList = ''
+    var options = []
     var codes = Object.keys(quoteCurrencies)
     for (var i = 0; i < codes.length; i++) {
       const currency = quoteCurrencies[codes[i]]
-      if (i != 0) {
-        currencyList += ', '
-      }
-      currencyList += currency.code + ': ' + currency.network
+      options.push({
+        label: currency.network,
+        value: currency.code
+      })
     }
     const commonOptions = {
       name: currencyField,
       label: await peertubeHelpers.translate('Currency which costs are quoted in'),
-      descriptionHTML: await peertubeHelpers.translate('Choose one of:') + currencyList,
-      type: 'input',
+      type: 'select',
+      options: options,
+      descriptionHTML: '',
       default: 'USD'
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
