@@ -1,7 +1,7 @@
-import { VideoPaid, VideoPaidStorage, Amount, Receipts, Exchange, quoteCurrencies } from './paid.js'
-import { version, hms, paymentPointerField, receiptServiceField, currencyField, viewCostField, adSkipCostField } from './common.js'
-import Plotly from 'plotly.js/lib/index-basic'
 import interval from 'interval-promise'
+import Plotly from 'plotly.js/lib/index-basic'
+import { adSkipCostField, currencyField, hms, paymentPointerField, receiptServiceField, version, viewCostField } from './common.js'
+import { Amount, Exchange, quoteCurrencies, Receipts, VideoPaid, VideoPaidStorage } from './paid.js'
 
 const tableOfContentsField = 'table-of-contents_parsed'
 
@@ -142,7 +142,7 @@ function register ({ registerHook, peertubeHelpers }) {
         const {
           // paymentPointer,
           // requestId,
-          amount, assetCode, assetScale, receipt} = event.detail
+          amount, assetCode, assetScale, receipt } = event.detail
 
         var instant = videoEl.currentTime
         if (seeking) {
@@ -231,7 +231,7 @@ function register ({ registerHook, peertubeHelpers }) {
               // Will be called by `seeked` event, otherwise we can miss the change in positon
               // and skip a segment that the user clicked on
               return
-            }else {
+            } else {
               cueChange(event)
             }
           })
@@ -472,7 +472,7 @@ function register ({ registerHook, peertubeHelpers }) {
                     }
                   }
                 }
-              } catch(e) {
+              } catch (e) {
                 console.error(e)
               }
 
@@ -750,7 +750,7 @@ function runStartSpan (recurse) {
   unpaid = startSpan.unpaid
   if (unpaid) {
     enableMonetization()
-  }else {
+  } else {
     disableMonetization()
   }
   updateSpan((recurse || 0) + 1)
@@ -778,7 +778,7 @@ async function enforceViewCost () {
       var x = amount.unverified.get(videoQuoteCurrencyObj.code)
       xrpPaid += x.significand * 10 ** x.exponent
     }
-  } catch(e) {
+  } catch (e) {
     console.error(e)
     xrpPaid = paid.total.xrp()
   }
@@ -797,7 +797,7 @@ async function enforceViewCost () {
       var x = amount.unverified.get(videoQuoteCurrencyObj.code)
       xrpPaidSession += x.significand * 10 ** x.exponent
     }
-  } catch(e) {
+  } catch (e) {
     console.error(e)
     xrpPaidSession = paid.sessionTotal.xrp()
     paidSessionAmount = paid.sessionTotal
@@ -810,13 +810,13 @@ async function enforceViewCost () {
     (sessionTime < 12 && (0.85 * xrpRequired < xrpPaid || 0.85 * xrpRequiredSession < xrpPaidSession))
     )) {
     //
-  }else {
+  } else {
     // Don't repeatedly show the modal if the video is paused
     if ((xrpPaid < xrpRequired && xrpPaidSession < xrpRequiredSession || document.monetization == null) && lastEnforcement != currentTime) {
       videoEl.pause()
       lastEnforcement = currentTime
       if (ptHelpers == null) {
-      }else {
+      } else {
         var costAmount = new Amount(true)
         var significand = viewCost
         var exponent = 0
@@ -834,7 +834,7 @@ async function enforceViewCost () {
               ' ' + costAmount.display(1) + ' ' + await ptHelpers.translate('is required.'),
             close: true
           })
-        }else {
+        } else {
           ptHelpers.showModal({
             title: await ptHelpers.translate('Viewing this video requires a higher pay rate'),
             content: await ptHelpers.translate('You have paid ') + paidSessionAmount.display(sessionTime) + '. ' +
@@ -848,7 +848,8 @@ async function enforceViewCost () {
 
   setTimeout(() => {
     enforceViewCost().then(() => {
-    })}, 3000)
+    })
+  }, 3000)
 }
 
 var pushViewedSegmentsPendingNonce = null

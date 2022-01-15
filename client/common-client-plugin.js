@@ -1,5 +1,5 @@
-import { VideoPaid, VideoPaidStorage, Amount, Exchange, quoteCurrencies } from './paid.js'
 import interval from 'interval-promise'
+import { Amount, Exchange, quoteCurrencies } from './paid.js'
 
 var ptHelpers = null
 var exchange = new Exchange()
@@ -61,7 +61,7 @@ async function populateBadges (recurse) {
             try {
               const paid = Amount.deserialize(monetizationStatus[videoUuid].paid)
               paidConverted = await paid.inCurrency(exchange, quoteCurrencies[monetizationStatus[videoUuid].currency.toLowerCase()])
-            } catch(e) {
+            } catch (e) {
               console.error(e)
             }
           }
@@ -122,4 +122,4 @@ async function populateBadges (recurse) {
   }
 }
 
-export { register}
+export { register }

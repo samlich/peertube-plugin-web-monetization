@@ -131,8 +131,8 @@ class Amount {
     /*while (this.verifiedReceipts.length != 0) {
       var res = receipts.retrieve(this.verifiedReceipts[0].receipt)
       if (res != null) {
-        this.unverifiedReceipts.shift()
-        console.log('TODO: verify')
+      this.unverifiedReceipts.shift()
+      console.log('TODO: verify')
       }
     }*/
   }
@@ -171,7 +171,7 @@ class Amount {
     for (const [assetCode, { significand, exponent }] of other.unverified) {
       this.deposit(significand, exponent, assetCode, false, null)
     }
-    for (var i = 0;i < other.unverifiedReceipts.length; i++) {
+    for (var i = 0; i < other.unverifiedReceipts.length; i++) {
       this.unverifiedReceipts.push(other.unverifiedReceipts[i])
     }
   }
@@ -187,7 +187,7 @@ class Amount {
       this.depositUnchecked(significand, exponent, assetCode, false, null)
     }
     if (other.unverifiedReceipts < 1000) {
-      for (var i = 0;i < other.unverifiedReceipts.length; i++) {
+      for (var i = 0; i < other.unverifiedReceipts.length; i++) {
         this.unverifiedReceipts.push(other.unverifiedReceipts[i])
       }
     }
@@ -200,7 +200,7 @@ class Amount {
     for (const [assetCode, { significand, exponent }] of other.unverified) {
       this.subtractUnchecked(significand, exponent, assetCode, false, allowOverdraft)
     }
-    for (var i = 0;i < other.unverifiedReceipts.length; i++) {
+    for (var i = 0; i < other.unverifiedReceipts.length; i++) {
       var removed = false
       for (var j = 0; j < this.unverifiedReceipts; j++) {
         if (this.unverifiedReceipts[j].receipt == verified[i]) {
@@ -318,7 +318,7 @@ class Amount {
           } else {
             display += roundTo(rate, 8) + ' ' + assetCode + '/10m'
           }
-        }else {
+        } else {
           const rounded = roundTo(rate, 5 + -exponent)
           if (currency != null && currency.symbol != null) {
             display += currency.symbol + rounded.toExponential() + '/10m'
@@ -326,7 +326,7 @@ class Amount {
             display += rounded.toExponential() + ' ' + assetCode + '/10m'
           }
         }
-      }else {
+      } else {
         const amount = significand * 10 ** exponent
         if (0.01 < amount) {
           if (currency != null && currency.symbol != null) {
@@ -334,7 +334,7 @@ class Amount {
           } else {
             display += roundTo(amount, 8) + ' ' + assetCode
           }
-        }else {
+        } else {
           const rounded = roundTo(amount, 5 + -exponent)
           if (currency != null && currency.symbol != null) {
             display += currency.symbol + rounded.toExponential()
@@ -347,7 +347,7 @@ class Amount {
 
     if (display.length == 0) {
       return '0'
-    }else {
+    } else {
       return display
     }
   }
@@ -520,7 +520,7 @@ class VideoPaid {
         this.currentSpanIdx = i
         next = this.spans[i + 1]
         break
-      }else if (instant <= this.spans[i].end) {
+      } else if (instant <= this.spans[i].end) {
         this.currentSpan = this.spans[i]
         this.currentSpanIdx = i
         if (i < this.spans.length) {
@@ -540,10 +540,10 @@ class VideoPaid {
     if (unpaid) {
       if (next == null) {
         return { unpaid: true, nextPaid: null }
-      }else {
+      } else {
         return { unpaid: true, nextPaid: next.start }
       }
-    }else {
+    } else {
       return { unpaid: false, paidEnds: this.currentSpan.end }
     }
   }
@@ -604,7 +604,7 @@ class VideoPaid {
     this.sessionTotal.depositReference(significand, exponent, assetCode, false)
     if (this.currentSpan == null) {
       console.log('web-monetization: VideoPaid.deposit without currentSpan')
-    }else {
+    } else {
       this.currentSpan.paidUncommitted.deposit(significand, exponent, assetCode, false, receipt)
       this.currentSpan.change = true
       if (instant != null) {
@@ -618,7 +618,7 @@ class VideoPaid {
 
         if (this.currentSpan.end == null) {
           this.currentSpan.end = instant
-        }else {
+        } else {
           this.currentSpan.end = Math.max(this.currentSpan.end, instant)
         }
       }
@@ -638,7 +638,7 @@ class VideoPaid {
     for (const span of this.spans) {
       if (span.end != null) {
         sum += span.end - span.start
-      }else if (instant != null) {
+      } else if (instant != null) {
         sum += instant - span.start
       }
     }
@@ -674,7 +674,7 @@ class VideoPaid {
       }
       if (span.end == null) {
         display += 'playing...'
-      }else {
+      } else {
         display += hms(span.end, 10)
       }
       display += '    ' + span.paid.display()
@@ -685,7 +685,7 @@ class VideoPaid {
     }
     if (display.length == 0) {
       return 'No spans'
-    }else {
+    } else {
       return display
     }
   }
@@ -832,7 +832,7 @@ class VideoPaid {
     // just remember to deserialize the `Amount`s contained
     ret.histogram = obj.histogram
     ret.nonce = obj.nonce
-    for (var i = 0;i < obj.spans.length; i++) {
+    for (var i = 0; i < obj.spans.length; i++) {
       const from = obj.spans[i]
       ret.spans.push({
         change: true,
