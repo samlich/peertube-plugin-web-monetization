@@ -31,9 +31,9 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     const commonOptions = {
       name: receiptServiceField,
       label: await peertubeHelpers.translate('Add receipt service to payment pointer (to verify payments)'),
-      descriptionHTML: await peertubeHelpers.translate(''),
-      type: 'input',
-      default: 'true'
+      type: 'input-checkbox',
+      descriptionHTML: '',
+      default: true
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
       const videoFormOptions = { type}
