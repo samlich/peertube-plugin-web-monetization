@@ -1,5 +1,5 @@
 {
 	"Web Monetization payment pointer": "Web Monetization Payment Pointer",
 	"Interledger <a href=\"https://paymentpointers.org/\">payment pointer</a> for <a href=\"https://webmonetization.org/\">Web Monetization</a>. In the form of $example.org/account.": "Interledger <a href=\"https://paymentpointers.org/\">Payment Pointer</a> für <a href=\"https://webmonetization.org/\">Web Monetization</a>. In Form von $example.org/account.",
-	"Invalid payment pointer foramt.": "Ungültiges Payment Pointer-Format."
+	"Invalid payment pointer format.": "Ungültiges Payment Pointer-Format."
 }
