@@ -29,6 +29,7 @@ function hms (duration) {
 module.exports = {
   version,
   paymentPointerField,
+  receiptServiceField,
   currencyField,
   viewCostField,
   adSkipCostField,
