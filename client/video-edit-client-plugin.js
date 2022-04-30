@@ -1,5 +1,5 @@
 import url from 'url'
-import { version, paymentPointerField, receiptServiceField, currencyField, viewCostField, adSkipCostField } from './common.js'
+import { adSkipCostField, currencyField, paymentPointerField, receiptServiceField, viewCostField } from './common.js'
 import { quoteCurrencies } from './paid.js'
 
 var invalidPaymentPointerFormatMsg = 'Invalid payment pointer format.'
@@ -12,10 +12,10 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     const commonOptions = {
       name: paymentPointerField,
       label: await peertubeHelpers.translate('Web Monetization payment pointer'),
+      type: 'input',
       descriptionHTML: await peertubeHelpers.translate(
         'Interledger <a href="https://paymentpointers.org/">payment pointer</a> for <a href="https://webmonetization.org/">Web Monetization</a>. In the form of $example.org/account.'
       ),
-      type: 'input',
       default: ''
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
@@ -31,9 +31,9 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     const commonOptions = {
       name: receiptServiceField,
       label: await peertubeHelpers.translate('Add receipt service to payment pointer (to verify payments)'),
-      descriptionHTML: await peertubeHelpers.translate(''),
-      type: 'input',
-      default: 'true'
+      type: 'input-checkbox',
+      descriptionHTML: '',
+      default: true
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
       const videoFormOptions = { type}
@@ -43,20 +43,21 @@ async function register ({ registerVideoField, peertubeHelpers }) {
 
   // Currency
   {
-    var currencyList = ''
+    var options = []
     var codes = Object.keys(quoteCurrencies)
     for (var i = 0; i < codes.length; i++) {
       const currency = quoteCurrencies[codes[i]]
-      if (i != 0) {
-        currencyList += ', '
-      }
-      currencyList += currency.code + ': ' + currency.network
+      options.push({
+        label: currency.network,
+        value: currency.code
+      })
     }
     const commonOptions = {
       name: currencyField,
       label: await peertubeHelpers.translate('Currency which costs are quoted in'),
-      descriptionHTML: await peertubeHelpers.translate('Choose one of:') + currencyList,
-      type: 'input',
+      type: 'select',
+      options: options,
+      descriptionHTML: '',
       default: 'USD'
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
@@ -70,8 +71,8 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     const commonOptions = {
       name: viewCostField,
       label: await peertubeHelpers.translate('Minimum payment rate to view per 10 minutes'),
-      descriptionHTML: await peertubeHelpers.translate(''),
       type: 'input',
+      descriptionHTML: await peertubeHelpers.translate(''),
       default: '0'
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
@@ -85,8 +86,8 @@ async function register ({ registerVideoField, peertubeHelpers }) {
     const commonOptions = {
       name: adSkipCostField,
       label: await peertubeHelpers.translate('Minimum payment rate to skip ads per 10 minutes'),
-      descriptionHTML: await peertubeHelpers.translate('Payment rates at or above this level will skip chapters with the "Sponsor" tag, labelled using the chapters plugin.'),
       type: 'input',
+      descriptionHTML: await peertubeHelpers.translate('Payment rates at or above this level will skip chapters with the "Sponsor" tag, labelled using the chapters plugin.'),
       default: '0'
     }
     for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
@@ -101,7 +102,8 @@ function finishAddPaymentPointerField () {
   // The element is not added until the user switches to the "Plugin settings" tab
   if (paymentPointerElement == null) {
     setTimeout(() => {
-      finishAddPaymentPointerField()}, 3000)
+      finishAddPaymentPointerField()
+    }, 3000)
     return
   }
 
@@ -139,7 +141,8 @@ function finishAddPaymentPointerField () {
   }
 
   paymentPointerElement.addEventListener('input', (event) => {
-    update()})
+    update()
+  })
   update()
 }
 

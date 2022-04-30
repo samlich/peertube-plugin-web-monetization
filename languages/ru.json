@@ -1,0 +1,5 @@
+{
+	"Web Monetization payment pointer": "Указатель платежей Web Monetization",
+	"Interledger <a href=\"https://paymentpointers.org/\">payment pointer</a> for <a href=\"https://webmonetization.org/\">Web Monetization</a>. In the form of $example.org/account.": "Значение <a href=\"https://paymentpointers.org/\">указателя платежей</a> для <a href=\"https://webmonetization.org/\">Web Monetization</a>. В формате $example.org/account.",
+	"Invalid payment pointer format.": "Неверный формат указателя платежа."
+}

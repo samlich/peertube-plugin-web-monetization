@@ -263,8 +263,6 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     res.send({ optOut: userStats.optOut, channels: userStats.channels })
   })
 
-
-
   router.post('/stats/view/*', async (req, res) => {
     var user
     try {
