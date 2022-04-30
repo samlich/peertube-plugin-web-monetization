@@ -43,20 +43,33 @@ async function register ({ registerVideoField, peertubeHelpers }) {
 
   // Currency
   {
-    var options = []
-    var codes = Object.keys(quoteCurrencies)
-    for (var i = 0; i < codes.length; i++) {
-      const currency = quoteCurrencies[codes[i]]
-      options.push({
+    var currencies = []
+    const commonCurrencies = ['usd', 'eur', 'xrp']
+    for (var i = 0; i < commonCurrencies.length; i++) {
+      const currency = quoteCurrencies[commonCurrencies[i]]
+      currencies.push({
         label: currency.network,
         value: currency.code
       })
     }
+    currencies.push({
+      label: '================',
+      value: 'USD'
+    })
+    var codes = Object.keys(quoteCurrencies)
+    for (var i = 0; i < codes.length; i++) {
+      const currency = quoteCurrencies[codes[i]]
+      currencies.push({
+        label: currency.network,
+        value: currency.code
+      })
+    }
+
     const commonOptions = {
       name: currencyField,
       label: await peertubeHelpers.translate('Currency which costs are quoted in'),
       type: 'select',
-      options: options,
+      options: currencies,
       descriptionHTML: '',
       default: 'USD'
     }
