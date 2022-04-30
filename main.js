@@ -43,7 +43,8 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       }
 
       var paymentPointer = await storageManager.getData(paymentPointerField + '_v-' + video.id)
-      video.pluginData[receiptServiceField] = await storageManager.getData(receiptServiceField + '_v-' + video.id)
+      const rsv = await storageManager.getData(receiptServiceField + '_v-' + video.id)
+      video.pluginData[receiptServiceField] = rsv == true || rsv == 'true'
       // if (receiptService) {
       //  paymentPointer = '$webmonetization.org/api/receipts/'+encodeURIComponent(paymentPointer)
       // }
