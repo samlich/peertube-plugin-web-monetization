@@ -1,0 +1,19 @@
+{
+    "extends": "@tsconfig/node12/tsconfig.json",
+    "compilerOptions": {
+        "lib": ["dom"],
+        "module": "es6",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "outDir": "../dist/",
+        "moduleResolution": "node",
+        "target": "es6", // same as PeerTube
+        "paths": {
+            "shared/*": ["../shared/*"]
+        }
+    },
+        "include": [
+        "./**/*",
+        "../shared/**/*"
+    ]
+}

@@ -1,15 +1,14 @@
-import url from 'url'
-import { adSkipCostField, currencyField, paymentPointerField, receiptServiceField, viewCostField } from './common.js'
-import { quoteCurrencies } from './paid.js'
+import { RegisterClientFormFieldOptions, RegisterClientVideoFieldOptions } from '@peertube/peertube-types'
+import type { RegisterClientOptions } from '@peertube/peertube-types/client'
+import { adSkipCostField, currencyField, paymentPointerField, receiptServiceField, viewCostField } from '../shared/common'
+import { quoteCurrencies } from '../shared/paid'
 
 var invalidPaymentPointerFormatMsg = 'Invalid payment pointer format.'
 
-// const minimumCostField = 'web-monetization-minimum-cost'
-
-async function register ({ registerVideoField, peertubeHelpers }) {
+export async function register ({ registerVideoField, peertubeHelpers }: RegisterClientOptions): Promise<void> {
   // Payment pointer
   {
-    const commonOptions = {
+    const commonOptions: RegisterClientFormFieldOptions = {
       name: paymentPointerField,
       label: await peertubeHelpers.translate('Web Monetization payment pointer'),
       type: 'input',
@@ -18,8 +17,9 @@ async function register ({ registerVideoField, peertubeHelpers }) {
       ),
       default: ''
     }
-    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-      const videoFormOptions = { type}
+    const types: ('upload' | 'import-url' | 'import-torrent' | 'update' | 'go-live')[] = ['upload', 'import-url', 'import-torrent', 'update']
+    for (const type of types) {
+      const videoFormOptions: RegisterClientVideoFieldOptions = { type}
       registerVideoField(commonOptions, videoFormOptions)
     }
     invalidPaymentPointerFormatMsg = await peertubeHelpers.translate(invalidPaymentPointerFormatMsg)
@@ -28,15 +28,16 @@ async function register ({ registerVideoField, peertubeHelpers }) {
 
   // Receipt service
   {
-    const commonOptions = {
+    const commonOptions: RegisterClientFormFieldOptions = {
       name: receiptServiceField,
       label: await peertubeHelpers.translate('Add receipt service to payment pointer (to verify payments)'),
       type: 'input-checkbox',
       descriptionHTML: '',
       default: true
     }
-    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-      const videoFormOptions = { type}
+    const types: ('upload' | 'import-url' | 'import-torrent' | 'update' | 'go-live')[] = ['upload', 'import-url', 'import-torrent', 'update']
+    for (const type of types) {
+      const videoFormOptions: RegisterClientVideoFieldOptions = { type}
       registerVideoField(commonOptions, videoFormOptions)
     }
   }
@@ -65,7 +66,7 @@ async function register ({ registerVideoField, peertubeHelpers }) {
       })
     }
 
-    const commonOptions = {
+    const commonOptions: RegisterClientFormFieldOptions = {
       name: currencyField,
       label: await peertubeHelpers.translate('Currency which costs are quoted in'),
       type: 'select',
@@ -73,38 +74,41 @@ async function register ({ registerVideoField, peertubeHelpers }) {
       descriptionHTML: '',
       default: 'USD'
     }
-    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-      const videoFormOptions = { type}
+    const types: ('upload' | 'import-url' | 'import-torrent' | 'update' | 'go-live')[] = ['upload', 'import-url', 'import-torrent', 'update']
+    for (const type of types) {
+      const videoFormOptions: RegisterClientVideoFieldOptions = { type}
       registerVideoField(commonOptions, videoFormOptions)
     }
   }
 
   // View cost
   {
-    const commonOptions = {
+    const commonOptions: RegisterClientFormFieldOptions = {
       name: viewCostField,
       label: await peertubeHelpers.translate('Minimum payment rate to view per 10 minutes'),
       type: 'input',
       descriptionHTML: await peertubeHelpers.translate(''),
       default: '0'
     }
-    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-      const videoFormOptions = { type}
+    const types: ('upload' | 'import-url' | 'import-torrent' | 'update' | 'go-live')[] = ['upload', 'import-url', 'import-torrent', 'update']
+    for (const type of types) {
+      const videoFormOptions: RegisterClientVideoFieldOptions = { type}
       registerVideoField(commonOptions, videoFormOptions)
     }
   }
 
   // Ad skip cost
   {
-    const commonOptions = {
+    const commonOptions: RegisterClientFormFieldOptions = {
       name: adSkipCostField,
       label: await peertubeHelpers.translate('Minimum payment rate to skip ads per 10 minutes'),
       type: 'input',
       descriptionHTML: await peertubeHelpers.translate('Payment rates at or above this level will skip chapters with the "Sponsor" tag, labelled using the chapters plugin.'),
       default: '0'
     }
-    for (const type of ['upload', 'import-url', 'import-torrent', 'update']) {
-      const videoFormOptions = { type}
+    const types: ('upload' | 'import-url' | 'import-torrent' | 'update' | 'go-live')[] = ['upload', 'import-url', 'import-torrent', 'update']
+    for (const type of types) {
+      const videoFormOptions: RegisterClientVideoFieldOptions = { type}
       registerVideoField(commonOptions, videoFormOptions)
     }
   }
@@ -123,9 +127,13 @@ function finishAddPaymentPointerField () {
   var paymentPointerValid = true
 
   function update () {
-    if (paymentPointerElement.value == null ||
-      paymentPointerElement.value === '' ||
-      validatePaymentPointer(paymentPointerElement.value)) {
+    if (paymentPointerElement == null) {
+      throw 'typescript unreachable'
+    }
+
+    if (paymentPointerElement.getAttribute('value') == null ||
+      paymentPointerElement.getAttribute('value') === '' ||
+      validatePaymentPointer(paymentPointerElement.getAttribute('value'))) {
       if (!paymentPointerValid) {
         paymentPointerValid = true
 
@@ -134,7 +142,7 @@ function finishAddPaymentPointerField () {
 
         var errorElRemove = document.getElementById(paymentPointerField + '-error')
         if (errorElRemove != null) {
-          errorElRemove.parentNode.removeChild(errorElRemove)
+          errorElRemove.parentNode!.removeChild(errorElRemove)
         }
       }
     } else {
@@ -148,29 +156,31 @@ function finishAddPaymentPointerField () {
         errorEl.id = paymentPointerField + '-error'
         errorEl.classList.add('form-error')
         errorEl.innerText = invalidPaymentPointerFormatMsg
-        paymentPointerElement.parentNode.appendChild(errorEl)
+        paymentPointerElement.parentNode!.appendChild(errorEl)
       }
     }
   }
 
-  paymentPointerElement.addEventListener('input', (event) => {
+  paymentPointerElement.addEventListener('input', () => {
     update()
   })
   update()
 }
 
-function validatePaymentPointer (value) {
+function validatePaymentPointer (value: string | null): boolean {
+  if (value == null) {
+    return false
+  }
   if (!value.startsWith('$')) {
     return false
   }
 
   const unparsed = 'https://' + value.substring(1)
-  const parsed = url.parse(unparsed)
+  const parsed = new URL(unparsed)
 
   return parsed.host != null &&
-    parsed.auth == null &&
+    parsed.username == null &&
+    parsed.password == null &&
     parsed.search == null &&
     parsed.hash == null
 }
-
-export { register }

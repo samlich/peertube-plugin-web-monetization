@@ -1,41 +1,71 @@
+import type { VideoDetails } from '@peertube/peertube-types'
+import type { RegisterClientOptions, RegisterClientHelpers } from '@peertube/peertube-types/client'
+import { MonetizationExtendedDocument, MonetizationProgressEvent } from '@webmonetization/types'
 import interval from 'interval-promise'
-import Plotly from 'plotly.js/lib/index-basic'
-import { adSkipCostField, currencyField, hms, paymentPointerField, receiptServiceField, version, viewCostField } from './common.js'
-import { Amount, Exchange, quoteCurrencies, Receipts, VideoPaid, VideoPaidStorage } from './paid.js'
+import videojs from 'video.js'
+import * as Plotly from 'plotly.js-finance-dist-min'
+import { adSkipCostField, currencyField, hms, paymentPointerField, receiptServiceField, version, viewCostField } from 'shared/common'
+import { Amount, Exchange, quoteCurrencies, Currency, Receipts, VideoPaid, VideoPaidStorage, SerializedState, SerializedHistogramBinUncommitted } from 'shared/paid'
+import { StatsViewPost, StatsHistogramUpdatePost } from 'shared/api'
 
 const tableOfContentsField = 'table-of-contents_parsed'
 
-var ptHelpers = null
-var username = null
-var baseStaticRoute = null
+function getDocument() {
+    return document as unknown as MonetizationExtendedDocument
+}
+const doc = getDocument()
+
+var ptHelpers: RegisterClientHelpers | null = null
+var baseStaticRoute: string
 var paid = new VideoPaid()
 var receipts = new Receipts()
 var exchange = new Exchange()
 var displayCurrency = quoteCurrencies['usd']
-var paymentPointer = null
-var videoQuoteCurrency = null
-var videoQuoteCurrencyObj = null
+var paymentPointer: string | null
+var videoQuoteCurrency: string
+var videoQuoteCurrencyObj: Currency
 var viewCost = 0
 var adSkipCost = 0
 
 var unpaid = true
-var paidEnds = null
-var nextPaid = null
-var spanChangeTimers = []
+var paidEnds: number | null = null
+var nextPaid: number | null = null
 
 var play = false
 var monetized = false
 var seeking = false
-var lastSeek = null
-var chapters = null
-var chaptersTrack = null
-var videoEl = null
-var videoId = null
+// `videoEl.currentTime` after `seeked` event is thrown
+var lastSeek: number | null = null
+
+type Chapters = {
+  chapters: Chapter[],
+  description: string | null,
+  end: null,
+};
+type Chapter = {
+  start: number,
+  end: number,
+  name: string,
+  tags: {
+    sponsor?: boolean,
+    selfPromotion?: boolean,
+    interactionReminder?: boolean,
+    intro?: boolean,
+    intermission?: boolean,
+    outro?: boolean,
+    credits?: boolean,
+    nonMusic?: boolean,
+  }
+};
+var chapters: Chapters | null = null
+var chaptersTrack: TextTrack | null = null
+var videoEl: HTMLVideoElement
+var videoId: number
 
 var statsTracking = true
 
 // `peertubeHelpers` is not available for `embed`
-function register ({ registerHook, peertubeHelpers }) {
+export function register ({ registerHook, peertubeHelpers }: RegisterClientOptions) {
   ptHelpers = peertubeHelpers
   if (ptHelpers != null) {
     baseStaticRoute = ptHelpers.getBaseStaticRoute()
@@ -43,36 +73,42 @@ function register ({ registerHook, peertubeHelpers }) {
 
   registerHook({
     target: 'action:video-watch.player.loaded',
-    handler: ({ player, video, videojs }) => {
-      setup(player, video, videojs)
+    handler: ({ player, video }: { player: videojs.Player, video: VideoDetails }) => {
+      setup(player, video)
     }
   })
   registerHook({
     target: 'action:embed.player.loaded',
-    handler: ({ player, video, videojs }) => {
+    handler: ({ player, video }: { player: videojs.Player, video: VideoDetails }) => {
       // `peertubeHelpers` is not available for embed, make best attempt at getting base route
       // `originInstanceUrl` also doesn't exist for embedded videos
       // baseStaticRoute = video.originInstanceUrl + '/plugins/web-monetization/' + version + '/router'
       baseStaticRoute = video.channel.url
-      baseStaticRoute = baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/'))
+      baseStaticRoute = baseStaticRoute!.slice(0, baseStaticRoute!.lastIndexOf('/'))
       baseStaticRoute = baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/'))
       baseStaticRoute += '/plugins/web-monetization/' + version + '/router'
-      setup(player, video, videojs)
+      setup(player, video)
     }
   })
 
-  function setup (player, video, videojs) {
+  function setup (player: videojs.Player, video: VideoDetails) {
     if (!video.pluginData || !video.pluginData[paymentPointerField]) {
       console.log('web-monetization: Not enabled for this video.')
       return
     }
     videoId = video.id
     paymentPointer = video.pluginData[paymentPointerField]
-    if (video.pluginData[receiptServiceField] == true || video.pluginData[receiptServiceField] == 'true') {
+    if (paymentPointer != null && (video.pluginData[receiptServiceField] == true || video.pluginData[receiptServiceField] == 'true')) {
       paymentPointer = '$webmonetization.org/api/receipts/' + encodeURIComponent(paymentPointer)
     }
+
     videoQuoteCurrency = video.pluginData[currencyField] || 'USD'
-    videoQuoteCurrencyObj = quoteCurrencies[videoQuoteCurrency.toLowerCase()]
+    videoQuoteCurrencyObj = quoteCurrencies[videoQuoteCurrency!.toLowerCase()]
+    if (videoQuoteCurrencyObj == null) {
+      videoQuoteCurrency = 'USD'
+      videoQuoteCurrencyObj = quoteCurrencies[videoQuoteCurrency!.toLowerCase()]
+    }
+
     if (video.pluginData[viewCostField] != null && !isNaN(parseFloat(video.pluginData[viewCostField]))) {
       // 600 to convert from per 10 min to per second
       viewCost = parseFloat(video.pluginData[viewCostField]) / 600
@@ -89,7 +125,7 @@ function register ({ registerHook, peertubeHelpers }) {
     }
 
     videoEl = player.el().getElementsByTagName('video')[0]
-    if (document.monetization === undefined) {
+    if (doc.monetization === undefined) {
       console.log('peertube-plugin-web-monetization v', version, ' enabled on server, but Web Monetization not supported by user agent. See https://webmonetization.org.')
       if (0 < viewCost) {
         console.log('web-monetization: Web Monetization not supported by user agent, but viewCost is ' + viewCost + ' cannot view video')
@@ -102,17 +138,17 @@ function register ({ registerHook, peertubeHelpers }) {
     console.log('peertube-plugin-web-monetization v', version, ' detected Web Monetization support. Setting up...')
 
     // Indicates that Web Monetization is enabled
-    document.monetization.addEventListener(
+    doc.monetization.addEventListener(
       'monetizationpending',
-      event => {
+      () => {
         // const { paymentPointer, requestId } = event.detail
       }
     )
 
     // First non-zero payment has been sent
-    document.monetization.addEventListener(
+    doc.monetization.addEventListener(
       'monetizationstart',
-      event => {
+      () => {
         // const { paymentPointer, requestId } = event.detail
         monetized = true
         // If start occures mid-segment
@@ -121,9 +157,9 @@ function register ({ registerHook, peertubeHelpers }) {
     )
 
     // Monetization end
-    document.monetization.addEventListener(
+    doc.monetization.addEventListener(
       'monetizationstop',
-      event => {
+      () => {
         /*
         const {
           paymentPointer,
@@ -136,72 +172,69 @@ function register ({ registerHook, peertubeHelpers }) {
     )
 
     // A payment (including first payment) has been made
-    document.monetization.addEventListener(
+    doc.monetization.addEventListener(
       'monetizationprogress',
-      event => {
+      (event: MonetizationProgressEvent) => {
         const {
           // paymentPointer,
           // requestId,
           amount, assetCode, assetScale, receipt } = event.detail
 
-        var instant = videoEl.currentTime
+        var instant: number | null = videoEl.currentTime
         if (seeking) {
           // If we are seeking, there is no guarantee whether the time reported is before or after the seek operation
           instant = null
         }
-        paid.deposit(instant, amount, -assetScale, assetCode, receipts.toCheck(receipt))
+        var receiptNumber = null
+        if (receipt != null) {
+          receiptNumber = receipts.toCheck(receipt)
+        }
+        paid.deposit(instant, parseInt(amount), -assetScale, assetCode, receiptNumber)
       }
     )
 
     // Normal state changes
-    videoEl.addEventListener('play', (event) => {
+    videoEl.addEventListener('play', () => {
       play = true
       // Update timer
       updateSpan()
       enableMonetization()
     })
-    videoEl.addEventListener('pause', (event) => {
+    videoEl.addEventListener('pause', () => {
       play = false
       disableMonetization()
     })
-    videoEl.addEventListener('ended', (event) => {
+    videoEl.addEventListener('ended', () => {
       play = false
       disableMonetization()
     })
 
-    videoEl.addEventListener('ratechange', (event) => {
+    videoEl.addEventListener('ratechange', () => {
       // Update timer
       updateSpan()
     })
-    var preSeekTime = null
-    var preSeekTimestamp = null
-    videoEl.addEventListener('timeupdate', (event) => {
-      if (seeking) {
-        return
-      }
-      var timeDiff = videoEl.currentTime - preSeekTime
-      if (preSeekTime == null || (0 < timeDiff && timeDiff < 0.75)) {
-        var now = Date.now()
-        var timestampDiff = now - preSeekTimestamp
-        if (preSeekTimestamp == null || Math.abs(timestampDiff - timeDiff) < 0.1) {
-          preSeekTime = videoEl.currentTime
-          preSeekTimestamp = now
-        }
+    var preSeekTime: number | null = null
+    videoEl.addEventListener('timeupdate', () => {
+      if (!seeking) {
+        preSeekTime = videoEl.currentTime
       }
     })
-    videoEl.addEventListener('seeking', (event) => {
+    videoEl.addEventListener('seeking', () => {
       seeking = true
-      if (paid.currentSpan != null) {
+      if (preSeekTime != null && paid.currentSpan != null) {
         // Seems to give time after seeking finished sometimes
         // paid.endSpan(videoEl.currentTime)
-        paid.endSpan(preSeekTime)
+        // `seeking` event is triggered when skipping a segment, in which case the
+        // span will have already been ended, and a new one started after the `preSeekTime`
+        if (paid.currentSpan.start <= preSeekTime) {
+          paid.endSpan(preSeekTime)
+        }
         preSeekTime = null
-        preSeekTimestamp = null
       }
       paidEnds = null
       nextPaid = null
     })
-    videoEl.addEventListener('seeked', (event) => {
+    videoEl.addEventListener('seeked', () => {
       lastSeek = videoEl.currentTime
       seeking = false
       cueChange()
@@ -209,14 +242,14 @@ function register ({ registerHook, peertubeHelpers }) {
     })
 
     // State changes due to loading
-    videoEl.addEventListener('playing', (event) => {
+    videoEl.addEventListener('playing', () => {
       if (play) {
         // Update timer
         updateSpan()
         enableMonetization()
       }
     })
-    videoEl.addEventListener('waiting', (event) => {
+    videoEl.addEventListener('waiting', () => {
       disableMonetization()
     })
 
@@ -226,13 +259,13 @@ function register ({ registerHook, peertubeHelpers }) {
         var track = tracks[i]
         if (track.kind == 'chapters') {
           chaptersTrack = track
-          track.addEventListener('cuechange', (event) => {
+          track.addEventListener('cuechange', () => {
             if (videoEl != null && videoEl.seeking) {
               // Will be called by `seeked` event, otherwise we can miss the change in positon
               // and skip a segment that the user clicked on
               return
             } else {
-              cueChange(event)
+              cueChange()
             }
           })
           console.log('web-monetization: Chapter cue track appears. Plugin data also available: ' + (chapters != null))
@@ -250,7 +283,7 @@ function register ({ registerHook, peertubeHelpers }) {
     player.remoteTextTracks().addEventListener('removetrack', textTracksUpdate)
     textTracksUpdate()
 
-    if (player.hasStarted_) {
+    if (player.hasStarted()) {
       updateSpan()
     }
 
@@ -259,25 +292,25 @@ function register ({ registerHook, peertubeHelpers }) {
 
     window.setInterval(pushViewedSegments, 10 * 1000)
 
-    var videoActionsMatches = document.getElementsByClassName('video-actions')
-    var videoDescriptionMatches = document.getElementsByClassName('video-info-description')
+    var videoActionsMatches = doc.getElementsByClassName('video-actions')
+    var videoDescriptionMatches = doc.getElementsByClassName('video-info-description')
     if (videoActionsMatches.length < 1 || videoDescriptionMatches.length < 1) {
       console.error('web-monetization: Failed to add stats panel')
     } else {
       var actions = videoActionsMatches[0]
       var description = videoDescriptionMatches[0]
 
-      var statsPanel = document.createElement('div')
+      var statsPanel = doc.createElement('div')
       statsPanel.style.display = 'none'
 
-      var currencySelect = document.createElement('select')
+      var currencySelect = doc.createElement('select')
       currencySelect.classList.add('peertube-button')
       currencySelect.classList.add('grey-button')
-      currencySelect.style = 'margin-top:0.5em;margin-bottom:0.5em;margin-right:0.5em;'
+      currencySelect.setAttribute('style', 'margin-top:0.5em;margin-bottom:0.5em;margin-right:0.5em;')
       var codes = Object.keys(quoteCurrencies)
       for (var i = 0; i < codes.length; i++) {
         const currency = quoteCurrencies[codes[i]]
-        var option = document.createElement('option')
+        var option = doc.createElement('option')
         option.innerText = currency.code + ' ' + currency.network
         option.value = currency.code
         currencySelect.appendChild(option)
@@ -294,14 +327,14 @@ function register ({ registerHook, peertubeHelpers }) {
       })
       statsPanel.appendChild(currencySelect)
 
-      var optOut = document.createElement('button')
+      var optOut = doc.createElement('button')
       optOut.classList.add('peertube-button')
       optOut.classList.add('grey-button')
       optOut.textContent = 'Opt-out and delete data'
       optOut.addEventListener('click', function () {
-        var headers = null
+        var headers: Record<string, string> | null = null
         if (ptHelpers != null) {
-          headers = ptHelpers.getAuthHeader()
+          headers = ptHelpers.getAuthHeader() || null
         }
         if (headers == null) {
           if (statsTracking) {
@@ -334,36 +367,36 @@ function register ({ registerHook, peertubeHelpers }) {
       })
       statsPanel.appendChild(optOut)
 
-      statsPanel.appendChild(document.createElement('br'))
+      statsPanel.appendChild(doc.createElement('br'))
 
-      var summary = document.createElement('h4')
+      var summary = doc.createElement('h4')
       statsPanel.appendChild(summary)
 
-      var histogram = document.createElement('div')
+      var histogram = doc.createElement('div')
       histogram.id = 'web-monetization-histogram'
       statsPanel.appendChild(histogram)
 
-      var perDayPlot = document.createElement('div')
+      var perDayPlot = doc.createElement('div')
       perDayPlot.id = 'web-monetization-by-day-plot'
       statsPanel.appendChild(perDayPlot)
 
-      var channelPlot = document.createElement('div')
+      var channelPlot = doc.createElement('div')
       channelPlot.id = 'web-monetization-channel-plot'
       statsPanel.appendChild(channelPlot)
 
-      var allUserSummary = document.createElement('h5')
+      var allUserSummary = doc.createElement('h5')
       statsPanel.appendChild(allUserSummary)
 
-      description.parentNode.insertBefore(statsPanel, description)
+      description.parentNode!.insertBefore(statsPanel, description)
 
-      var statsButton = document.createElement('button')
+      var statsButton = doc.createElement('button')
       statsButton.classList.add('action-button')
-      statsButton.placement = 'bottom auto'
-      statsButton.ngbTooltip = 'View Monetization Stats'
+      statsButton.setAttribute('placement', 'bottom auto')
+      statsButton.setAttribute('ngbTooltip', 'View Monetization Stats')
       statsButton.title = 'View Monetization Stats'
-      var icon = document.createElement('img')
+      var icon = doc.createElement('img')
       icon.src = baseStaticRoute + '/images/wm-icon-grey.svg'
-      icon.height = '24'
+      icon.setAttribute('height', '24')
 
       statsButton.appendChild(icon)
       statsButton.addEventListener('click', function () {
@@ -376,18 +409,18 @@ function register ({ registerHook, peertubeHelpers }) {
       actions.prepend(statsButton)
 
       // Video parts histogram
-      var allHistogramX = null
-      var allHistogramY = null
+      var allHistogramX: number[] | null = null
+      var allHistogramY: number[] | null = null
       var totalRevenue = null
       // Per-day data
-      var perDayX = null
-      var perDayUnknown = null
-      var perDaySubscribed = null
+      var perDayX: string[] | null = null
+      var perDayUnknown: number[] | null = null
+      var perDaySubscribed: number[] | null = null
 
-      var channelData = null
-      var channelNames = {}
+      var channelData: Partial<Plotly.PieData> | null = null
+      var channelNames: Record<string, string> = {}
 
-      var lastHistogramFetch = null
+      var lastHistogramFetch: number | null = null
       var histogramFetchTries = 0
       var updateStatsClosure = async () => {
         if (statsPanel.style.display == 'none') {
@@ -408,7 +441,7 @@ function register ({ registerHook, peertubeHelpers }) {
           try {
             // Refresh data every 6 minutes
             // If fetch fails, try up to 5 times every 15 seconds, then every 6 minutes
-            if ((6 * 60 * 1000 < Date.now() - lastHistogramFetch || (0 < histogramFetchTries && histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))
+            if (lastHistogramFetch == null || (6 * 60 * 1000 < Date.now() - lastHistogramFetch || (0 < histogramFetchTries && histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))
               || ((allHistogramX == null && histogramFetchTries == 0) || (histogramFetchTries < 5 && 15 * 1000 < Date.now() - lastHistogramFetch))) {
               lastHistogramFetch = Date.now()
               histogramFetchTries += 1
@@ -463,11 +496,11 @@ function register ({ registerHook, peertubeHelpers }) {
                           }
                         }
                       }
-                      channelData.values.push(userStatsData.channels[channelId])
+                      channelData.values!.push(userStatsData.channels[channelId])
                       if (channelNames[channelId] != null) {
-                        channelData.labels.push(channelNames[channelId])
+                        channelData.labels!.push(channelNames[channelId])
                       } else {
-                        channelData.labels.push(channelId)
+                        channelData.labels!.push(channelId)
                       }
                     }
                   }
@@ -493,7 +526,8 @@ function register ({ registerHook, peertubeHelpers }) {
               var significand = 0
               for (var i = 0; i < resData.histogram.parts.length; i++) {
                 allHistogramX.push(i * 15 / 60)
-                significand += allHistogramY[i]
+                // `allHistogramY` set non-null a few lines above, `allHistogramY = resData.histogram.parts`
+                significand += allHistogramY![i]
               }
 
               var exponent = 0
@@ -527,12 +561,12 @@ function register ({ registerHook, peertubeHelpers }) {
               var b = await paid.histogram[i].committed.inCurrency(exchange, currency)
               a.addFrom(b)
               var sum = 0
-              if (a.unverified.has(currency.code)) {
-                var x = a.unverified.get(currency.code)
+              var x = a.unverified.get(currency.code)
+              if (x != null) {
                 sum += x.significand * 10 ** x.exponent
               }
-              if (a.verified.has(currency.code)) {
-                var x = a.verified.get(currency.code)
+              var x = a.verified.get(currency.code)
+              if (x != null) {
                 sum += x.significand * 10 ** x.exponent
               }
               histogramX.push(i * 15 / 60)
@@ -541,7 +575,7 @@ function register ({ registerHook, peertubeHelpers }) {
           } catch (e) {
             console.error(e)
           }
-          var histogramUser = {
+          var histogramUser: Plotly.Data = {
             name: 'This session (histogram is not stored per-user)',
             x: histogramX,
             y: histogramData,
@@ -553,10 +587,10 @@ function register ({ registerHook, peertubeHelpers }) {
               color: 'orange'
             }
           }
-          var histogramAll = {
+          var histogramAll: Plotly.Data = {
             name: 'All users',
-            x: allHistogramX,
-            y: allHistogramY,
+            x: allHistogramX!,
+            y: allHistogramY!,
             type: 'scatter',
             mode: 'lines',
             yaxis: 'y2',
@@ -565,13 +599,13 @@ function register ({ registerHook, peertubeHelpers }) {
               color: 'grey'
             }
           }
-          var data
+          var data: Plotly.Data[]
           if (allHistogramX != null) {
             data = [histogramUser, histogramAll]
           } else {
             data = [histogramUser]
           }
-          var layout = {
+          var layout: any = {
             title: 'Contributions to Video at 15 Second Intervals',
             xaxis: { title: 'Position in video (min)' },
             yaxis: { title: 'Session contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
@@ -580,46 +614,46 @@ function register ({ registerHook, peertubeHelpers }) {
             showlegend: true
           }
           if (histogramData.length != 0 || allHistogramX != null) {
-            histogram.style = 'width:50em;height:30em;'
+            histogram.setAttribute('style', 'width:50em;height:30em;')
             Plotly.newPlot(histogram, data, layout)
           }
 
           // Per-day
           {
-            var unknown = {
+            var unknown: Plotly.Data = {
               name: 'Unsubscribed users',
-              x: perDayX,
-              y: perDayUnknown,
+              x: perDayX!,
+              y: perDayUnknown!,
               type: 'scatter',
               marker: {
                 color: 'grey'
               }
             }
-            var subscribed = {
+            var subscribed: Plotly.Data = {
               name: 'Subscribed users',
-              x: perDayX,
-              y: perDaySubscribed,
+              x: perDayX!,
+              y: perDaySubscribed!,
               type: 'scatter',
               marker: {
                 color: 'orange'
               }
             }
-            var data = [unknown, subscribed]
-            var layout = {
+            var data: Plotly.Data[] = [unknown, subscribed]
+            var layout: any = {
               title: 'Contributions to Video by Day',
               xaxis: { title: 'Day' },
               yaxis: { title: 'Contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
               legend: { orientation: 'h', xanchor: 'right', yanchor: 'top', x: 0.99, y: 0.99 }
             }
             if (perDayX != null && perDayX.length != 0) {
-              perDayPlot.style = 'width:50em;height:30em;'
+              perDayPlot.setAttribute('style', 'width:50em;height:30em;')
               Plotly.newPlot(perDayPlot, data, layout)
             }
           }
 
           // Channel pie
           if (channelData != null) {
-            channelPlot.style = 'width:50em;height:30em;'
+            channelPlot.setAttribute('style', 'width:50em;height:30em;')
             Plotly.newPlot(channelPlot, [channelData], {
               title: 'Per-channel Contributions'
             })
@@ -643,26 +677,26 @@ function enableMonetization () {
     return
   }
   if (unpaid) {
-    var meta = document.createElement('meta')
+    var meta = doc.createElement('meta')
     meta.name = 'monetization'
-    meta.content = paymentPointer
+    meta.content = paymentPointer!
     meta.id = metaId
-    document.getElementsByTagName('head')[0].appendChild(meta)
+    doc.getElementsByTagName('head')[0].appendChild(meta)
     enabled = true
   }
 }
 
 function disableMonetization () {
   enabled = false
-  const meta = document.getElementById(metaId)
+  const meta = doc.getElementById(metaId)
   if (meta != null) {
-    meta.parentNode.removeChild(meta)
+    meta.parentNode!.removeChild(meta)
     console.log('web-monetization: Paid ' + paid.displayTotal() + ' for this video so far')
   }
 }
 
 function cueChange () {
-  if (chaptersTrack == null || (!monetized && unpaid)) {
+  if (chapters == null || chaptersTrack == null || (!monetized && unpaid)) {
     return
   }
   const xrpPaid = paid.total.xrp()
@@ -671,16 +705,16 @@ function cueChange () {
     // Set some sort of notice
     return
   }
-  for (var i = 0; i < chaptersTrack.activeCues.length; i++) {
-    const cue = chaptersTrack.activeCues[i]
-    var idx = cue.id.match(/Chapter (.+)/)
-    if (idx == null) {
+  for (var i = 0; i < (chaptersTrack.activeCues || []).length; i++) {
+    const cue = chaptersTrack.activeCues![i]
+    var idxMatch = cue.id.match(/Chapter (.+)/)
+    if (idxMatch == null) {
       console.log('web-monetization: Failed to parse cue id "' + cue.id + '" expected something like "Chapter 3"')
       return
     }
-    idx = parseInt(idx[1]) - 1
+    var idx = parseInt(idxMatch[1]) - 1
     if (window.isNaN(idx)) {
-      console.log('web-monetization: Failed to parse cue id "' + cue.id + '" could not parse integer from "' + idx[1] + '", expected something like "Chapter 3"')
+      console.log('web-monetization: Failed to parse cue id "' + cue.id + '" could not parse integer from "' + idxMatch[1] + '", expected something like "Chapter 3"')
       return
     }
     if (chapters.chapters[idx] == null) {
@@ -693,7 +727,7 @@ function cueChange () {
         console.log('web-monetization: Failed to skip sponsor, video element is not stored')
         return
       }
-      if (cue.startTime <= lastSeek && lastSeek <= cue.endTime) {
+      if (lastSeek != null && cue.startTime <= lastSeek && lastSeek <= cue.endTime) {
         console.log('web-monetization: Will not skip sponsor "' + chapter.name + '" (' + hms(cue.startTime) + '–' + hms(cue.endTime) + ') ' + hms(videoEl.currentTime) + ' -> ' + hms(cue.endTime) + ' as last seek was to ' + hms(lastSeek))
         return
       }
@@ -711,7 +745,7 @@ function cueChange () {
   }
 }
 
-function updateSpan (recurse) {
+function updateSpan (recurse = 0) {
   if (videoEl == null) { return }
   if (20 < recurse) {
     console.log('web-monetization: Too much recursion in updateSpan pos:' + hms(videoEl.currentTime) + ' paidEnd:' + hms(paidEnds) + ' nextPaid:' + hms(nextPaid))
@@ -719,44 +753,41 @@ function updateSpan (recurse) {
     return
   }
 
-  for (var timer of spanChangeTimers) {
-    window.clearTimeout(timer)
-  }
-  spanChangeTimers = []
-
   var next = paidEnds
   if (next == null) {
     next = nextPaid
   }
   if (next != null && next <= videoEl.currentTime) {
     paid.endSpan(videoEl.currentTime)
-    runStartSpan((recurse || 0) + 1)
+    runStartSpan(recurse + 1)
     // runStartSpan recurses
     return
   }
   if (paid.currentSpan == null) {
-    runStartSpan((recurse || 0) + 1)
+    runStartSpan(recurse + 1)
     // runStartSpan recurses
     return
   }
 
-  window.setTimeout(updateSpan, (next - videoEl.currentTime) / videoEl.playbackRate * 1000)
+  if (next != null) {
+    window.setTimeout(updateSpan, (next - videoEl.currentTime) / videoEl.playbackRate * 1000)
+  }
 }
 
-function runStartSpan (recurse) {
+function runStartSpan (recurse = 0) {
   const startSpan = paid.startSpan(videoEl.currentTime)
-  nextPaid = startSpan.nextPaid
-  paidEnds = startSpan.paidEnds
+  nextPaid = startSpan.nextPaid || null
+  paidEnds = startSpan.paidEnds || null
   unpaid = startSpan.unpaid
   if (unpaid) {
     enableMonetization()
   } else {
     disableMonetization()
   }
-  updateSpan((recurse || 0) + 1)
+  updateSpan(recurse + 1)
 }
 
-var lastEnforcement = null
+var lastEnforcement: number | null = null
 async function enforceViewCost () {
   var currentTime = null
   if (videoEl != null) {
@@ -766,16 +797,16 @@ async function enforceViewCost () {
   const totalTime = paid.totalTime(currentTime)
   const sessionTime = paid.getSessionTime(currentTime)
 
-  var xrpPaid
+  var xrpPaid: number
   try {
     const amount = await paid.total.inCurrency(exchange, videoQuoteCurrencyObj)
     xrpPaid = 0
     if (amount.unverified.has(videoQuoteCurrencyObj.code)) {
-      var x = amount.unverified.get(videoQuoteCurrencyObj.code)
+      var x = amount.unverified.get(videoQuoteCurrencyObj.code)!
       xrpPaid += x.significand * 10 ** x.exponent
     }
     if (amount.verified.has(videoQuoteCurrencyObj.code)) {
-      var x = amount.unverified.get(videoQuoteCurrencyObj.code)
+      var x = amount.unverified.get(videoQuoteCurrencyObj.code)!
       xrpPaid += x.significand * 10 ** x.exponent
     }
   } catch (e) {
@@ -783,18 +814,18 @@ async function enforceViewCost () {
     xrpPaid = paid.total.xrp()
   }
   const xrpRequired = viewCost * totalTime
-  var paidSessionAmount
-  var xrpPaidSession
+  var paidSessionAmount: Amount
+  var xrpPaidSession: number
   try {
     const amount = await paid.sessionTotal.inCurrency(exchange, videoQuoteCurrencyObj)
     paidSessionAmount = amount
     xrpPaidSession = 0
     if (amount.unverified.has(videoQuoteCurrencyObj.code)) {
-      var x = amount.unverified.get(videoQuoteCurrencyObj.code)
+      var x = amount.unverified.get(videoQuoteCurrencyObj.code)!
       xrpPaidSession += x.significand * 10 ** x.exponent
     }
     if (amount.verified.has(videoQuoteCurrencyObj.code)) {
-      var x = amount.unverified.get(videoQuoteCurrencyObj.code)
+      var x = amount.unverified.get(videoQuoteCurrencyObj.code)!
       xrpPaidSession += x.significand * 10 ** x.exponent
     }
   } catch (e) {
@@ -805,14 +836,14 @@ async function enforceViewCost () {
   const xrpRequiredSession = viewCost * sessionTime
 
   // Allow time for Web Monetization to begin
-  if (document.monetization != null &&
+  if (doc.monetization != null &&
     (sessionTime < 6 ||
     (sessionTime < 12 && (0.85 * xrpRequired < xrpPaid || 0.85 * xrpRequiredSession < xrpPaidSession))
     )) {
     //
   } else {
     // Don't repeatedly show the modal if the video is paused
-    if ((xrpPaid < xrpRequired && xrpPaidSession < xrpRequiredSession || document.monetization == null) && lastEnforcement != currentTime) {
+    if ((xrpPaid < xrpRequired && xrpPaidSession < xrpRequiredSession || doc.monetization == null) && lastEnforcement != currentTime) {
       videoEl.pause()
       lastEnforcement = currentTime
       if (ptHelpers == null) {
@@ -827,7 +858,7 @@ async function enforceViewCost () {
         significand >>= 0
         costAmount.depositUnchecked(significand, exponent, videoQuoteCurrency, true, null)
 
-        if (document.monetization == null) {
+        if (doc.monetization == null) {
           ptHelpers.showModal({
             title: await ptHelpers.translate('Viewing this video requires payment through Web Monetization'),
             content: await ptHelpers.translate('See <a href="https://webmonetization.org">https://webmonetization.org</a> for more information.') +
@@ -852,9 +883,9 @@ async function enforceViewCost () {
   }, 3000)
 }
 
-var pushViewedSegmentsPendingNonce = null
-var pushViewedSegmentsPendingSince = null
-var totalPaidWhenSubmitted = null
+var pushViewedSegmentsPendingNonce: string | null = null
+var pushViewedSegmentsPendingSince: number | null = null
+var totalPaidWhenSubmitted: Amount | null = null
 function pushViewedSegments () {
   if (pushViewedSegmentsPendingSince != null && Date.now() - pushViewedSegmentsPendingSince < 60 * 1000) {
     return
@@ -863,13 +894,13 @@ function pushViewedSegments () {
   const changes = paid.serializeChanges(instant)
 
   var subscribed = false
-  if (document.getElementsByClassName('subscribe-button').length == 0 && document.getElementsByClassName('unsubscribe-button').length == 1) {
+  if (doc.getElementsByClassName('subscribe-button').length == 0 && doc.getElementsByClassName('unsubscribe-button').length == 1) {
     subscribed = true
   }
 
-  var headers = null
+  var headers: Record<string, string> | null = null
   if (ptHelpers != null) {
-    headers = ptHelpers.getAuthHeader()
+    headers = ptHelpers.getAuthHeader() || null
   }
   if (headers == null) {
     if (!statsTracking) {
@@ -878,15 +909,18 @@ function pushViewedSegments () {
     // Not logged in. Still submit to histogram
     pushViewedSegmentsPendingNonce = paid.nonce
     pushViewedSegmentsPendingSince = Date.now()
+    
+    const body: StatsHistogramUpdatePost = { receipts: receipts.serialize(), histogram: changes.histogram, subscribed: false }
     fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/histogram_update/' + videoId, {
       method: 'POST',
       headers: { 'content-type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ receipts: receipts.serialize(), histogram: changes.histogram, subscribed: false })
+      body: JSON.stringify(body)
     }).then(res => res.json())
-      .then(data => {
-        if (data.committed == null) {
+      .then(dataRaw => {
+        if (dataRaw.committed == null) {
           throw 'web-monetization: /stats/histogram_update gave no `committed`'
         }
+        const data: { committed: SerializedHistogramBinUncommitted[] } = dataRaw
         paid.removeCommittedChanges(VideoPaid.deserializeHistogramChanges(data.committed))
         pushViewedSegmentsPendingNonce = null
         pushViewedSegmentsPendingSince = null
@@ -897,12 +931,14 @@ function pushViewedSegments () {
   pushViewedSegmentsPendingNonce = paid.nonce
   pushViewedSegmentsPendingSince = Date.now()
   totalPaidWhenSubmitted = paid.total
+  
+  const reqBody: StatsViewPost = { receipts: receipts.serialize(), changes: changes, subscribed: subscribed }
   fetch(baseStaticRoute.slice(0, baseStaticRoute.lastIndexOf('/') + 1) + 'router/stats/view/' + videoId, {
     method: 'POST',
     headers: headers,
-    body: JSON.stringify({ receipts: receipts.serialize(), changes: changes, subscribed: subscribed })
+    body: JSON.stringify(reqBody)
   }).then(res => res.json())
-    .then(data => {
+    .then((data: SerializedState) => {
       if (data.currentState == null) {
         throw 'web-monetization: /stats/view gave no `currentState`'
       }
@@ -929,5 +965,3 @@ function pushViewedSegments () {
       pushViewedSegmentsPendingSince = null
     })
 }
-
-export { register }

@@ -12,20 +12,20 @@
   },
   "clientScripts": [
     {
-      "script": "dist/video-watch-client-plugin.js",
+      "script": "dist/client/video-watch-client-plugin.js",
       "scopes": [
         "video-watch",
         "embed"
       ]
     },
     {
-      "script": "dist/video-edit-client-plugin.js",
+      "script": "dist/client/video-edit-client-plugin.js",
       "scopes": [
         "video-edit"
       ]
     },
     {
-      "script": "dist/common-client-plugin.js",
+      "script": "dist/client/common-client-plugin.js",
       "scopes": [
         "common"
       ]
@@ -35,25 +35,39 @@
     "assets/style.css"
   ],
   "dependencies": {
-    "plotly.js": "=2.0.0-rc.0",
-    "interval-promise": "^1.4"
+    "interval-promise": "^1.4",
+    "plotly.js-finance-dist-min": "^2.12",
+    "short-uuid": "^4.2"
   },
   "devDependencies": {
+    "@peertube/peertube-types": "^4.2",
+    "@types/express": "4.17",
+    "@types/plotly.js": "^1.54",
+    "video.js": "^7.19",
+    "@types/video.js": "^7.3",
+    "@webmonetization/types": "^0.0.0",
+    "@tsconfig/node12": "^1.0",
     "@purtuga/esm-webpack-plugin": "^1.0",
     "transform-loader": "^0.2.4",
     "ify-loader": "^1.1",
+    "typescript": "^4.3",
+    "ts-loader": "^8.3",
     "webpack": "^4.0",
     "webpack-cli": "^4.0",
-    "standard": "^14.0"
+    "standard": "^14.0",
+    "npm-run-all": "^4.1"
   },
   "keywords": [
     "peertube",
     "plugin"
   ],
-  "library": "./main.js",
+  "library": "./dist/server/main.js",
   "scripts": {
+    "clean:light": "rm -rf dist/*",
     "prepare": "npm run build",
-    "build": "webpack",
+    "build:webpack": "webpack --mode production",
+    "build:server": "npx -p typescript tsc --build server/tsconfig.json",
+    "build": "npm-run-all -s clean:light -p build:webpack build:server",
     "test": "standard"
   },
   "staticDirs": {

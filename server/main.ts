@@ -1,40 +1,206 @@
-const common = require('./client/common.js')
-const { version, paymentPointerField, receiptServiceField, currencyField, viewCostField, adSkipCostField } = common
-const paid = require('./client/paid.js')
-const { VideoPaid, VideoPaidStorage, Amount, Receipts, Exchange, quoteCurrencies } = paid
+import type { Request, Response } from 'express'
+import type { RegisterServerOptions, MVideoFullLight, MVideoThumbnail, PluginStorageManager } from '@peertube/peertube-types'
+import short from 'short-uuid'
+import { paymentPointerField, paymentPointerStore, receiptServiceField, receiptServiceStore, currencyField, currencyStore, viewCostField, viewCostStore, adSkipCostField, adSkipCostStore, StoreKey, StoreObjectKey } from  '../shared/common.js'
+import { VideoPaidStorage, Amount, Receipts, Exchange, quoteCurrencies, SerializedState, SerializedHistogramBinUncommitted, SerializedVideoPaid } from '../shared/paid.js'
+import { Histogram, StatsHistogramGet, StatsViewPost, StatsHistogramUpdatePost, MonetizationStatusBulkPost, MonetizationStatusBulkPostRes, MonetizationStatusBulkStatus } from '../shared/api'
+
+const shortUuidTranslator = short()
 
 var exchange = new Exchange()
 
-async function register ({peertubeHelpers, getRouter, registerHook, registerSetting, settingsManager, storageManager, videoCategoryManager, videoLicenceManager, videoLanguageManager}) {
+class StorageManagerTypeFix {
+  storageManager: PluginStorageManager
+  
+  constructor (storageManager: PluginStorageManager) {
+    this.storageManager = storageManager
+  }
+  
+  // PeerTube lies and says it will always return a string, when it actually
+  // returns undefined when no value exists, and returns an object, number, string, boolean, or null
+  // if it's able to parse as json
+  async getDataUnknown (key: string): Promise<object | number | string | boolean | null | undefined> {
+    // PeerTube spec specifies: async getData (key: string): Promise<string> {
+    return await this.storageManager.getData(key) as any
+  }
+  
+  async getDataString (key: StoreKey<string>): Promise<string | undefined> {
+    const val = await this.getDataUnknown(key.k)
+    if (val === undefined || typeof val == 'string') {
+      return val
+    }
+    // backwards compatibility for when we set values to null in order to unset them
+    if (val === null) {
+      return undefined
+    }
+    return JSON.stringify(val)
+  }
+  
+  async getDataObjectRaw (key: StoreKey<object>): Promise<object | undefined> {
+    const val = await this.getDataUnknown(key.k)
+    if (val === undefined || (typeof val == 'object' && val != null)) {
+      return val
+    }
+    // backwards compatibility for when we set values to null in order to unset them
+    if (val === null) {
+      return undefined
+    }
+    throw new Error('expected object for stored value '+key.k+', but got '+typeof val)
+  }
+  
+  async getDataObject<T> (key: StoreObjectKey<T>): Promise<T | null | undefined> {
+    const val = await this.getDataUnknown(key.k)
+    if (val === undefined) {
+      return val
+    }
+    if (typeof val == 'object' && val != null) {
+      return key.validate(val)
+    }
+    // backwards compatibility for when we set values to null in order to unset them
+    if (val === null) {
+      return undefined
+    }
+    throw new Error('expected object for stored value '+key.k+', but got '+typeof val+' with nullness:'+(val === null))
+  }
+  async getDataNumber (key: StoreKey<number>): Promise<number | undefined> {
+    const val = await this.getDataUnknown(key.k)
+    if (val === undefined || typeof val == 'number') {
+      return val
+    }
+    // backwards compatibility for when we set values to null in order to unset them
+    if (val === null) {
+      return undefined
+    }
+    throw new Error('expected number for stored value '+key.k+', but got '+typeof val)
+  }
+  
+  async getDataBoolean (key: StoreKey<boolean>): Promise<boolean | undefined> {
+    const val = await this.getDataUnknown(key.k)
+    if (val === undefined || typeof val == 'boolean') {
+      return val
+    }
+    // backwards compatibility for when we set values to null in order to unset them
+    if (val === null) {
+      return undefined
+    }
+    throw new Error('expected boolean for stored value '+key.k+', but got '+typeof val)
+  }
+  
+  /*async storeData (key: string, data: any): Promise<any> {
+    return await this.storageManager.storeData(key, data)
+  }*/
+  
+  async storeDataRemove<T> (key: StoreKey<T>): Promise<any> {
+    return await this.storageManager.storeData(key.k, undefined)
+  }
+  
+  async storeDataString (key: StoreKey<string>, data: string): Promise<void> {
+    await this.storageManager.storeData(key.k, data)
+  }
+  
+  async storeDataObjectRaw (key: StoreKey<object>, data: object): Promise<void> {
+    await this.storageManager.storeData(key.k, data)
+  }
+  
+  async storeDataObject<T> (key: StoreObjectKey<T>, data: T): Promise<void> {
+    await this.storageManager.storeData(key.k, data)
+  }
+  
+  async storeDataNumber (key: StoreKey<number>, data: number): Promise<void> {
+    await this.storageManager.storeData(key.k, data)
+  }
+  
+  async storeDataBoolean (key: StoreKey<boolean>, data: boolean): Promise<void> {
+    await this.storageManager.storeData(key.k, data)
+  }
+}
+
+function histogramStore (videoId: string): StoreObjectKey<Histogram> {
+  return {
+    k: 'stats_histogram_v-' + videoId,
+    validate: (x: object): Histogram | null => {
+    if (!x.hasOwnProperty('parts') || !x.hasOwnProperty('history')) {
+        return null
+    }
+    var y = x as any
+    return { parts: y.parts, history: y.history }
+    }
+  }
+}
+
+type UserStats = {
+    optOut: boolean,
+    channels: any,
+}
+function userStatsStore (userId: string): StoreObjectKey<UserStats> {
+  return {
+    k: 'stats_user-' + userId,
+    validate: (x: object): UserStats | null => {
+    var y = x as any
+    var optOut
+    var channels
+    if (x.hasOwnProperty('optOut')) {
+        optOut = y.optOut
+    } else {
+        optOut = false
+    }
+    if (x.hasOwnProperty('channels')) {
+      channels = y.channels
+    } else {
+      channels = {}
+    }
+    var y = x as any
+    return { optOut, channels }
+    }
+  }
+}
+
+function videoPaidStore (videoId: string, userId: string): StoreObjectKey<SerializedVideoPaid> {
+  return {
+    k: 'stats_view_v-' + videoId + '_user-' + userId,
+    validate: (x: object): SerializedVideoPaid | null => {
+    if (!x.hasOwnProperty('total') || !x.hasOwnProperty('spans')) {
+        return null
+    }
+    var y = x as any
+    return { total: y.total, spans: y.spans }
+    }
+  }
+}
+
+export async function register ({peertubeHelpers, getRouter, registerHook, registerSetting: _r, settingsManager: _s, storageManager: storageManager_ }: RegisterServerOptions) {
+  const log = peertubeHelpers.logger
+  const storageManager = new StorageManagerTypeFix(storageManager_)
+  
   registerHook({
     target: 'action:api.video.updated',
-    handler: ({ video, body }) => {
+    handler: ({ video, body }: { video: MVideoFullLight, body: any }) => {
       if (!body.pluginData) {
         return
       }
 
       var paymentPointer = body.pluginData[paymentPointerField]
       if (!paymentPointer || paymentPointer.trim() === '') {
-        storageManager.storeData(paymentPointerField + '_v-' + video.id, null)
-        storageManager.storeData(receiptServiceField + '_v-' + video.id, null)
-        storageManager.storeData(currencyField + '_v-' + video.id, null)
-        storageManager.storeData(viewCostField + '_v-' + video.id, null)
-        storageManager.storeData(adSkipCostField + '_v-' + video.id, null)
+        storageManager.storeDataRemove(paymentPointerStore(video.id))
+        storageManager.storeDataRemove(receiptServiceStore(video.id))
+        storageManager.storeDataRemove(currencyStore(video.id))
+        storageManager.storeDataRemove(viewCostStore(video.id))
+        storageManager.storeDataRemove(adSkipCostStore(video.id))
         return
       }
 
-      storageManager.storeData(paymentPointerField + '_v-' + video.id, paymentPointer.trim())
-      storageManager.storeData(receiptServiceField + '_v-' + video.id, body.pluginData[receiptServiceField])
-      storageManager.storeData(currencyField + '_v-' + video.id, body.pluginData[currencyField].trim())
+      storageManager.storeDataString(paymentPointerStore(video.id), paymentPointer.trim())
+      storageManager.storeDataBoolean(receiptServiceStore(video.id), body.pluginData[receiptServiceField])
+      storageManager.storeDataString(currencyStore(video.id), body.pluginData[currencyField].trim())
       // Divide by 600 to convert from per 10 minutes to per second
-      storageManager.storeData(viewCostField + '_v-' + video.id, parseFloat(body.pluginData[viewCostField].trim()))
-      storageManager.storeData(adSkipCostField + '_v-' + video.id, parseFloat(body.pluginData[adSkipCostField].trim()))
+      storageManager.storeDataNumber(viewCostStore(video.id), parseFloat(body.pluginData[viewCostField].trim()))
+      storageManager.storeDataNumber(adSkipCostStore(video.id), parseFloat(body.pluginData[adSkipCostField].trim()))
     }
   })
 
   registerHook({
     target: 'filter:api.video.get.result',
-    handler: async (video) => {
+    handler: async (video: any) => {
       if (!video) {
         return video
       }
@@ -42,29 +208,28 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
         video.pluginData = {}
       }
 
-      var paymentPointer = await storageManager.getData(paymentPointerField + '_v-' + video.id)
-      const rsv = await storageManager.getData(receiptServiceField + '_v-' + video.id)
-      video.pluginData[receiptServiceField] = rsv == true || rsv == 'true'
+      var paymentPointer = await storageManager.getDataString(paymentPointerStore(video.id))
+      video.pluginData[receiptServiceField] = await storageManager.getDataBoolean(receiptServiceStore(video.id))
       // if (receiptService) {
       //  paymentPointer = '$webmonetization.org/api/receipts/'+encodeURIComponent(paymentPointer)
       // }
       video.pluginData[paymentPointerField] = paymentPointer
-      video.pluginData[currencyField] = await storageManager.getData(currencyField + '_v-' + video.id)
-      video.pluginData[viewCostField] = await storageManager.getData(viewCostField + '_v-' + video.id)
-      video.pluginData[adSkipCostField] = await storageManager.getData(adSkipCostField + '_v-' + video.id)
+      video.pluginData[currencyField] = await storageManager.getDataString(currencyStore(video.id))
+      video.pluginData[viewCostField] = await storageManager.getDataNumber(viewCostStore(video.id))
+      video.pluginData[adSkipCostField] = await storageManager.getDataNumber(adSkipCostStore(video.id))
       return video
     }
   })
 
   const router = getRouter()
-  router.get('/stats/histogram/*', async (req, res) => {
+  router.get('/stats/histogram/*', async (req: Request, res: Response) => {
     const videoId = req.path.slice(req.path.lastIndexOf('/') + 1)
 
     var video
     try {
       video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
     } catch (e) {
-      console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
+      log.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -73,28 +238,35 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       return
     }
 
-    const histogramKey = 'stats_histogram_v-' + video.id
-    var histogram
+    var histogramObj: Histogram | null | undefined
     try {
-      histogram = await storageManager.getData(histogramKey)
+      histogramObj = await storageManager.getDataObject(histogramStore(video.id))
     } catch (e) {
-      console.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
+      log.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    if (histogram == null || histogram.parts == null || histogram.history == null) {
+    var histogram
+    if(histogramObj === undefined) {
       histogram = { parts: [], history: {} }
+    } else if (histogramObj === null) {
+      log.error('web-monetization: /stats/histogram/: `Histogram` in store failed validation')
+      res.status(500).send('500 Internal Server Error')
+      return
+    } else {
+        histogram = histogramObj
     }
 
-    res.send({ histogram: histogram })
+    const body: StatsHistogramGet = { histogram }
+    res.send(body)
   })
 
-  async function commitHistogramChanges (video, histogram, changes, subscribed, userStats) {
+  async function commitHistogramChanges (video: MVideoThumbnail, histogram: Histogram, changes: SerializedHistogramBinUncommitted[], subscribed: boolean, userStats: any = null): Promise<boolean> {
     var histogramChanged = false
     const lastBin = (video.duration / 15) >> 0
     try {
-      const currencyCode = await storageManager.getData(currencyField + '_v-' + video.id)
-      const currency = quoteCurrencies[currencyCode.toLowerCase()]
+      const currencyCode = await storageManager.getDataString(currencyStore(video.id))
+      const currency = currencyCode == null ? null : quoteCurrencies[currencyCode.toLowerCase()]
       if (currency != null) {
         for (var i = 0; i < changes.length; i++) {
           var bin = changes[i]
@@ -109,12 +281,12 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
           amount = await amount.inCurrency(exchange, currency)
           if (amount != null) {
             var sum = 0
-            if (amount.unverified.has(currency.code)) {
-              var x = amount.unverified.get(currency.code)
+            var x = amount.unverified.get(currency.code)
+            if (x != null) {
               sum += x.significand * 10 ** x.exponent
             }
-            if (amount.verified.has(currency.code)) {
-              var x = amount.unverified.get(currency.code)
+            var x = amount.unverified.get(currency.code)
+            if (x != null) {
               sum += x.significand * 10 ** x.exponent
             }
 
@@ -147,13 +319,13 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
         }
       }
     } catch (e) {
-      console.error(e)
+      log.error('within commmitHistogramChanges: ' + e)
     }
     return histogramChanged
   }
 
   router.post('/stats/histogram_update/*', async (req, res) => {
-    var data = req.body
+    var data: StatsHistogramUpdatePost = req.body
     if (data.histogram.length != 0) {
       const videoId = req.path.slice(req.path.lastIndexOf('/') + 1)
 
@@ -161,7 +333,7 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       try {
         video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
       } catch (e) {
-        console.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
+        log.error('web-monetization: /stats/histogram/: Failed to video loadByIdOrUUID: ' + e)
         res.status(500).send('500 Internal Server Error')
         return
       }
@@ -170,39 +342,46 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
         return
       }
 
-      const histogramKey = 'stats_histogram_v-' + video.id
-      var histogram
+      var histogramObj
       try {
-        histogram = await storageManager.getData(histogramKey)
+        histogramObj = await storageManager.getDataObject(histogramStore(video.id))
       } catch (e) {
-        console.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
+        log.error('web-monetization: /stats/histogram/: Failed to getData histogram: ' + e)
         res.status(500).send('500 Internal Server Error')
         return
       }
-      if (histogram == null) {
+      var histogram
+      if(histogramObj === undefined) {
         histogram = { parts: [], history: {} }
+      } else if (histogramObj === null) {
+        log.error('web-monetization: /stats/histogram/: `Histogram` in store failed validation')
+        res.status(500).send('500 Internal Server Error')
+        return
+      } else {
+          histogram = histogramObj
       }
+
 
       var receipts = Receipts.deserialize(data.receipts)
       receipts.verified = []
       try {
         await receipts.verifyReceipts()
       } catch(e) {
-        console.error('Failed to verify receipts:')
-        console.error(e)
+        log.error('Failed to verify receipts:' + e)
       }
 
       try {
         const histogramChanged = await commitHistogramChanges(video, histogram, data.histogram, data.subscribed)
         if (histogramChanged) {
-          storageManager.storeData(histogramKey, histogram)
+          storageManager.storeDataObject(histogramStore(video.id), histogram)
         }
       } catch (e) {
-        console.error(e)
+        log.error('commitHistogramChanges: ' + e)
       }
     }
 
-    res.send({ committed: data.histogram })
+    const resBody: { committed: SerializedHistogramBinUncommitted[] } = { committed: data.histogram }
+    res.send(resBody)
   })
 
   router.post('/stats/opt_out', async (req, res) => {
@@ -210,22 +389,36 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
-      console.error('web-monetization: /stats/opt_out/: Failed to getAuthUser: ' + e)
+      log.error('web-monetization: /stats/opt_out/: Failed to getAuthUser: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-
-    const userStatsKey = 'stats_user-' + user.id
-    var previousUserStats
+    if (user == null) {
+      return
+    }
+    if (user.id == null) {
+      log.error('web-monetization: /stats/opt_out/: `user.id == null`')
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+    
+    var previousUserStatsObj: UserStats | null | undefined
     try {
-      previousUserStats = await storageManager.getData(userStatsKey)
-    } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
+      previousUserStatsObj = await storageManager.getDataObject(userStatsStore(user.id))
+     } catch (e) {
+      log.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    if (previousUserStats == null) {
+    var previousUserStats 
+    if (previousUserStatsObj === undefined) {
       previousUserStats = { optOut: false, channels: {} }
+    } else if (previousUserStatsObj === null) {
+      log.error('web-monetization: /stats/view/: `UserStats` in store failed validation')
+      res.status(500).send('500 Internal Server Error')
+      return
+    } else {
+      previousUserStats = previousUserStatsObj
     }
 
     if (req.body.optOut == true) {
@@ -234,34 +427,49 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       previousUserStats.optOut = false
     }
 
-    storageManager.storeData(userStatsKey, previousUserStats)
+    storageManager.storeDataObject(userStatsStore(user.id), previousUserStats)
 
     res.send({ optOut: previousUserStats.optOut })
   })
 
-  router.post('/stats/user/channels', async (req, res) => {
+  router.post('/stats/user/channels', async (_: Request, res: Response) => {
     var user
     try {
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
-      console.error('web-monetization: /stats/user/channels: Failed to getAuthUser: ' + e)
+      log.error('web-monetization: /stats/user/channels: Failed to getAuthUser: ' + e)
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+    if (user == null) {
+      return
+    }
+    if (user.id == null) {
+      log.error('web-monetization: /stats/opt_out/: `user.id == null`')
       res.status(500).send('500 Internal Server Error')
       return
     }
 
-    const userStatsKey = 'stats_user-' + user.id
-    var userStats
+    var userStatsObj: UserStats | null | undefined
     try {
-      userStats = await storageManager.getData(userStatsKey)
+      userStatsObj = await storageManager.getDataObject(userStatsStore(user.id))
     } catch (e) {
-      console.error('web-monetization: /stats/user/channels: Failed to getData user stats: ' + e)
+      log.error('web-monetization: /stats/user/channels: Failed to getData user stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    if (userStats == null) {
+    var userStats 
+    if (userStatsObj === undefined) {
       userStats = { optOut: false, channels: {} }
+    } else if (userStatsObj === null) {
+      log.error('web-monetization: /stats/view/: `UserStats` in store failed validation')
+      res.status(500).send('500 Internal Server Error')
+      return
+    } else {
+      userStats = userStatsObj
     }
-    res.send({ optOut: userStats.optOut, channels: userStats.channels })
+
+    res.send(userStats)
   })
 
   router.post('/stats/view/*', async (req, res) => {
@@ -269,17 +477,26 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
     try {
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
+      log.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
+    if (user == null) {
+      return
+    }
+    if (user.id == null) {
+      log.error('web-monetization: /stats/opt_out/: `user.id == null`')
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+    
     const videoId = req.path.slice(req.path.lastIndexOf('/') + 1)
 
     var video
     try {
       video = await peertubeHelpers.videos.loadByIdOrUUID(videoId)
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to video loadByIdOrUUID: ' + e)
+      log.error('web-monetization: /stats/view/: Failed to video loadByIdOrUUID: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
@@ -288,88 +505,97 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       return
     }
 
-    var data = req.body
+    var data: StatsViewPost = req.body
 
-    const storageKey = 'stats_view_v-' + video.id + '_user-' + user.id
-    const histogramKey = 'stats_histogram_v-' + video.id
-    const userStatsKey = 'stats_user-' + user.id
-    var previous
+    var previous: SerializedVideoPaid | null | undefined
     try {
-      previous = await storageManager.getData(storageKey)
+      previous = await storageManager.getDataObject(videoPaidStore(video.id, user.id))
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData view stats: ' + e)
+      log.error('web-monetization: /stats/view/: Failed to getData view stats: ' + e)
+      res.status(500).send('500 Internal Server Error')
+      return
+    }
+
+    var previousHistogramObj
+    try {
+      previousHistogramObj = await storageManager.getDataObject(histogramStore(video.id))
+    } catch (e) {
+      log.error('web-monetization: /stats/view/: Failed to getData histogram: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
     var previousHistogram
+    if(previousHistogramObj === undefined) {
+      previousHistogram = { parts: [], history: {} }
+    } else if (previousHistogramObj === null) {
+      log.error('web-monetization: /stats/histogram/: `Histogram` in store failed validation')
+      res.status(500).send('500 Internal Server Error')
+      return
+    } else {
+        previousHistogram = previousHistogramObj
+    }
+    
+    var previousUserStatsObj
     try {
-      previousHistogram = await storageManager.getData(histogramKey)
+      previousUserStatsObj = await storageManager.getDataObject(userStatsStore(user.id))
     } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData histogram: ' + e)
+      log.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
       res.status(500).send('500 Internal Server Error')
       return
     }
-    var previousUserStats
-    try {
-      previousUserStats = await storageManager.getData(userStatsKey)
-    } catch (e) {
-      console.error('web-monetization: /stats/view/: Failed to getData user stats: ' + e)
-      res.status(500).send('500 Internal Server Error')
-      return
-    }
-    if (previousUserStats == null) {
+    var previousUserStats 
+    if (previousUserStatsObj === undefined) {
       previousUserStats = { optOut: false, channels: {} }
+    } else if (previousUserStatsObj === null) {
+      log.error('web-monetization: /stats/view/: `UserStats` in store failed validation')
+      res.status(500).send('500 Internal Server Error')
+      return
+    } else {
+      previousUserStats = previousUserStatsObj
     }
 
     var store
-    var changed = false
     if (previous == null) {
       store = new VideoPaidStorage()
     } else {
       store = VideoPaidStorage.deserialize(previous)
     }
 
-    var histogramChanged = false
-    if (previousHistogram == null || previousHistogram.parts == null || previousHistogram.history == null) {
-      previousHistogram = { parts: [], history: {} }
-    }
-
-    var committedChanges = null
-    var storeSerizlied
-
     var receipts = Receipts.deserialize(data.receipts)
     receipts.verified = []
     try {
       await receipts.verifyReceipts()
     } catch(e) {
-      console.error(e)
+      log.error('verify receipts:' + e)
     }
 
-    var changes = VideoPaid.deserializeChanges(data.changes)
-    const anyChanges = store.commitChanges(changes)
+    // `histogram` field in `VideoPAid` here is sparse, most functions are invalid
+    // var changes = VideoPaid.deserializeChanges(data.changes)
+    const anyChanges = store.commitChanges(data.changes)
     try {
       store.verifyReceipts()
     } catch (e) {
-      console.log(e)
+      log.error('verify receipts:' + e)
     }
-    storeSerialized = store.serialize()
+    const storeSerialized: SerializedVideoPaid = store.serialize()
     if (anyChanges) {
-      storageManager.storeData(storageKey, storeSerialized)
+      storageManager.storeDataObject(videoPaidStore(video.id, user.id), storeSerialized)
     }
 
+    var histogramChanged = false
     if (!previousUserStats.optOut) {
       try {
         histogramChanged = await commitHistogramChanges(video, previousHistogram, data.changes.histogram, data.subscribed, previousUserStats)
         if (histogramChanged) {
-          storageManager.storeData(histogramKey, previousHistogram)
-          storageManager.storeData(userStatsKey, previousUserStats)
+          storageManager.storeDataObject(histogramStore(video.id), previousHistogram)
+          storageManager.storeDataObject(userStatsStore(user.id), previousUserStats)
         }
       } catch (e) {
-        console.error(e)
+        log.error('commitHistogramChanges: ' + e)
       }
     }
 
-    var resBody = {
+    var resBody: SerializedState = {
       currentState: storeSerialized,
       committedChanges: data.changes,
       optOut: previousUserStats.optOut
@@ -383,63 +609,63 @@ async function register ({peertubeHelpers, getRouter, registerHook, registerSett
       user = await peertubeHelpers.user.getAuthUser(res)
     } catch (e) {
       user = null
-      console.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
+      log.error('web-monetization: /stats/view/: Failed to getAuthUser: ' + e)
     }
 
-    var data = req.body
+    var data: MonetizationStatusBulkPost = req.body
     if (req.body.videos == null || req.body.videos.length == null) {
       res.status(400).send('400 Bad Request')
       return
     }
-    const videos = req.body.videos
+    const videos: string[] = data.videos
 
-    var statuses = {}
+    var statuses: Record<string, MonetizationStatusBulkStatus> = {}
     for (var i = 0; i < videos.length; i++) {
       try {
-        const video = await peertubeHelpers.videos.loadByIdOrUUID(videos[i])
-        const paymentPointer = await storageManager.getData(paymentPointerField + '_v-' + video.id)
+        const video = await peertubeHelpers.videos.loadByIdOrUUID(shortUuidTranslator.toUUID(videos[i]))
+        const paymentPointer = await storageManager.getDataString(paymentPointerStore(video.id))
         if (paymentPointer != null) {
           statuses[videos[i]] = { monetization: 'monetized' }
-          const currency = await storageManager.getData(currencyField + '_v-' + video.id)
-          const currencyObj = quoteCurrencies[currency.toLowerCase()]
-          const viewCost = await storageManager.getData(viewCostField + '_v-' + video.id)
-          const adSkipCost = await storageManager.getData(adSkipCostField + '_v-' + video.id)
-          if (adSkipCost != null && 0 < adSkipCost) {
-            statuses[videos[i]] = { monetization: 'ad-skip' }
-          }
-          if (viewCost != null && 0 < viewCost) {
-            var paid = null
-            if (user != null) {
-              const storageKey = 'stats_view_v-' + video.id + '_user-' + user.id
-              try {
-                const stats = await storageManager.getData(storageKey)
-                if (stats != null) {
-                  paid = stats.total
-                }
-              } catch (e) {
-                console.error(e)
-              }
+          
+          try {
+            const currency = await storageManager.getDataString(currencyStore(video.id))
+            const viewCost = await storageManager.getDataNumber(viewCostStore(video.id))
+            const adSkipCost = await storageManager.getDataNumber(adSkipCostStore(video.id))
+            if (adSkipCost != undefined && !isNaN(adSkipCost) && 0 < adSkipCost) {
+              statuses[videos[i]] = { monetization: 'ad-skip' }
             }
+            if (viewCost != undefined && !isNaN(viewCost) && 0 < viewCost) {
+              var paid = null
+              if (user != null && user.id != null) {
+                try {
+                  const stats = await storageManager.getDataObject(videoPaidStore(video.id, user.id))
+                  if (stats != null) {
+                    paid = stats.total
+                  }
+                } catch (e) {
+                  log.error('failed to try to get stats for video '+video.id+' for user '+user.id+', error:'+e)
+                }
+              }
 
-            statuses[videos[i]] = { monetization: 'pay-wall', currency: currency, viewCost: viewCost, duration: video.duration, paid: paid }
+              statuses[videos[i]] = { monetization: 'pay-wall', currency: currency, viewCost: viewCost, duration: video.duration, paid: paid }
+            }
+          } catch (e) {
+            log.error('failed to get extended monetization data for video '+video.id+', error:'+e)
           }
         }
       } catch (e) {
-        console.log('failed to get video ' + videos[i])
-        console.log(e)
+        log.error('failed to get video ' + videos[i])
+        log.error('failed to get video error: ' + e)
         if (statuses[videos[i]] == null) {
-          statuses[videos[i]] = 'unknown'
+          statuses[videos[i]] = { monetization: 'unknown' }
         }
       }
     }
 
-    res.send({ statuses: statuses })
+    const body: MonetizationStatusBulkPostRes = { statuses }
+    res.send(body)
   })
 }
 
-async function unregister () {
+export async function unregister () {
 }
-
-module.exports = {
-  register,
-unregister}

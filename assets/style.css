@@ -1,0 +1,6 @@
+.video-miniature-name {
+  /* price labels may wrap to second line
+     3em is good for 2 lines, 4em for 3 lines
+   */
+  max-height: 4em !important
+}

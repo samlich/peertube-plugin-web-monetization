@@ -3,17 +3,18 @@ const path = require('path')
 const EsmWebpackPlugin = require('@purtuga/esm-webpack-plugin')
 
 const clientFiles = [
-  'video-edit-client-plugin.js',
-  'video-watch-client-plugin.js',
-  'common-client-plugin.js'
+  'video-edit-client-plugin',
+  'video-watch-client-plugin',
+  'common-client-plugin'
 ]
 
 const config = clientFiles.map(f => ({
-  mode: 'production',
-  entry: './client/' + f,
+  // mode: 'production',
+  devtool: process.env.NODE_ENV === 'dev' ? 'eval-source-map' : false,
+  entry: './client/' + f + '.ts',
   output: {
-    path: path.resolve(__dirname, './dist'),
-    filename: './' + f,
+    path: path.resolve(__dirname, './dist/client'),
+    filename: './' + f + '.js',
     library: 'script',
     libraryTarget: 'var'
   },
@@ -21,13 +22,16 @@ const config = clientFiles.map(f => ({
   module: {
     rules: [
       {
-        test: /\.js$/,
-        use: [
-          'ify-loader',
-          'transform-loader?plotly.js/tasks/compress_attributes.js'
-        ]
+        test: /\.ts$/,
+        use: 'ts-loader'
       }
     ]
+  },
+  resolve: {
+    alias: {
+      shared: path.resolve(__dirname, 'shared/')
+    },
+    extensions: ['.ts']
   }
 }))
 

@@ -1,12 +1,37 @@
 const version = '1.0.6'
+
+export interface StoreKey<T> {
+  k: string
+}
+export interface StoreObjectKey<T> {
+  k: string,
+  validate: (x: object) => T | null
+}
+
+export function paymentPointerStore(videoId: string): StoreKey<string> {
+  return { k: paymentPointerField + '_v-' + videoId }
+}
+export function receiptServiceStore(videoId: string): StoreKey<boolean> {
+  return { k: receiptServiceField + '_v-' + videoId }
+}
+export function currencyStore(videoId: string): StoreKey<string> {
+  return { k: currencyField + '_v-' + videoId }
+}
+export function viewCostStore(videoId: string): StoreKey<number> {
+  return { k: viewCostField + '_v-' + videoId }
+}
+export function adSkipCostStore(videoId: string): StoreKey<number> {
+  return { k: adSkipCostField + '_v-' + videoId }
+}
+
 const paymentPointerField = 'web-monetization-payment-pointer'
 const receiptServiceField = 'web-monetization-receipt-service'
 const currencyField = 'web-monetization-currency'
 const viewCostField = 'web-monetization-view-cost'
 const adSkipCostField = 'web-monetization-ad-skip-cost'
 
-function hms (duration) {
-  if (duration == null || window.isNaN(duration)) {
+function hms (duration: number | null) {
+  if (duration == null || isNaN(duration)) {
     return '' + duration
   }
   var s = duration % 60
@@ -16,7 +41,7 @@ function hms (duration) {
   if (6 < ('' + s).length) {
     s = Math.round(s * 1000) / 1000
   }
-  var ret = ''
+  
   if (h != 0) {
     return h + 'h' + m + 'm' + s + 's'
   }
@@ -26,7 +51,7 @@ function hms (duration) {
   return s + 's'
 }
 
-module.exports = {
+export {
   version,
   paymentPointerField,
   receiptServiceField,

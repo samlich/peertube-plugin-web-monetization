@@ -1,14 +1,31 @@
-// import { hms } from './common.js'
-const common = require('./common.js')
-const { hms } = common
+import { hms } from './common'
 
+type UnverifiedReceipt = {
+  significand: number,
+  exponent: number,
+  assetCode: string,
+  receipt: number,
+}
+export type SerializedAmount = {
+  unverified: [string, SingleAmount][],
+  unverifiedReceipts: UnverifiedReceipt[],
+  verified: [string, SingleAmount][],
+  isReference: boolean,
+}
+
+type SingleAmount = { significand: number, exponent: number }
 // An amount of money in various assets
 // Either an actual account or reference value
 // Money cannot be created, other than by `deposit`ing
 // It can be added to reference values, but only moved among actual accounts
 // export
-class Amount {
-  constructor (isReference) {
+export class Amount {
+  unverified: Map<string, SingleAmount>;
+  unverifiedReceipts: UnverifiedReceipt[];
+  verified: Map<string, SingleAmount>;
+  isReference: boolean;
+  
+  constructor (isReference = false) {
     this.unverified = new Map()
     this.unverifiedReceipts = []
     this.verified = new Map()
@@ -20,17 +37,17 @@ class Amount {
     }
   }
 
-  serialize () {
-    var ret = {
+  serialize (): SerializedAmount {
+    var ret: SerializedAmount = {
       isReference: this.isReference,
-      unverifiedReceipts: this.unverifiedReceipts
+      unverifiedReceipts: this.unverifiedReceipts,
+      unverified: [...this.unverified],
+      verified: [...this.verified],
     }
-    ret.unverified = [...this.unverified]
-    ret.verified = [...this.verified]
     return ret
   }
 
-  static deserialize (obj) {
+  static deserialize (obj: SerializedAmount): Amount {
     if (obj.isReference != true && obj.isReference != false) {
       throw 'Cannot deserialize `Amount`, `isReference` not `true` or `false`'
     }
@@ -50,25 +67,25 @@ class Amount {
     return ret
   }
 
-  deposit (significand, exponent, assetCode, verified, receipt) {
+  deposit (significand: number, exponent: number, assetCode: string, verified: boolean, receipt: number | null) {
     if (this.isReference) {
       throw 'Cannot deposit to reference `Amount`'
     }
     this.depositUnchecked(significand, exponent, assetCode, verified, receipt)
   }
 
-  depositReference (significand, exponent, assetCode, verified) {
+  depositReference (significand: number, exponent: number, assetCode: string, verified: boolean) {
     if (!this.isReference) {
       throw 'Cannot `depositReference` to non-reference `Amount`'
     }
     this.depositUnchecked(significand, exponent, assetCode, verified, null)
   }
 
-  depositUnchecked (significand, exponent, assetCode, verified, receipt) {
+  depositUnchecked (significand: number, exponent: number, assetCode: string, verified: boolean, receipt: number | null) {
     if (assetCode == null) {
       throw 'web-monetization: paid.js: Amount.depositUnchecked: `assetCode` cannot be null'
     }
-    var destMap
+    var destMap: Map<string, any>
     if (verified) {
       destMap = this.verified
     } else {
@@ -89,7 +106,7 @@ class Amount {
     dest.significand += significand * 10 ** (exponent - dest.exponent)
   }
 
-  subtractUnchecked (significand, exponent, assetCode, verified, allowOverdraft) {
+  subtractUnchecked (significand: number, exponent: number, assetCode: string, verified: boolean, allowOverdraft: boolean) {
     if (allowOverdraft) {
       throw 'Negative balance in `Amount` not supported'
     }
@@ -98,7 +115,7 @@ class Amount {
       return
     }
 
-    var destMap
+    var destMap: Map<string, any>
     if (verified) {
       destMap = this.verified
     } else {
@@ -127,7 +144,7 @@ class Amount {
 
   async verifyReceipts () {}
 
-  acceptReceipts (receipts) {
+  acceptReceipts () {
     /*while (this.verifiedReceipts.length != 0) {
       var res = receipts.retrieve(this.verifiedReceipts[0].receipt)
       if (res != null) {
@@ -137,7 +154,7 @@ class Amount {
     }*/
   }
 
-  moveFrom (other) {
+  moveFrom (other: Amount) {
     if (this.isReference) {
       throw 'Attempt to move money into reference value.'
     }
@@ -152,12 +169,12 @@ class Amount {
       this.deposit(significand, exponent, assetCode, false, null)
     }
     other.unverified = new Map()
-    while (other.unverifiedReceipts.length != 0) {
-      this.unverifiedReceipts.push(other.unverifiedReceipts.pop())
+    for (var i = other.unverifiedReceipts.pop(); i != null; i = other.unverifiedReceipts.pop()) {
+      this.unverifiedReceipts.push(i)
     }
   }
 
-  moveFromMakeReference (other) {
+  moveFromMakeReference (other: Amount) {
     if (this.isReference) {
       throw 'Attempt to move money into reference value.'
     }
@@ -176,7 +193,7 @@ class Amount {
     }
   }
 
-  addFrom (other) {
+  addFrom (other: Amount) {
     if (!this.isReference) {
       throw 'Attempt to add to non-reference money amount.'
     }
@@ -186,14 +203,14 @@ class Amount {
     for (const [assetCode, { significand, exponent }] of other.unverified) {
       this.depositUnchecked(significand, exponent, assetCode, false, null)
     }
-    if (other.unverifiedReceipts < 1000) {
+    if (other.unverifiedReceipts.length < 1000) {
       for (var i = 0; i < other.unverifiedReceipts.length; i++) {
         this.unverifiedReceipts.push(other.unverifiedReceipts[i])
       }
     }
   }
 
-  subtract (other, allowOverdraft) {
+  subtract (other: Amount, allowOverdraft: boolean = false) {
     for (const [assetCode, { significand, exponent }] of other.verified) {
       this.subtractUnchecked(significand, exponent, assetCode, true, allowOverdraft)
     }
@@ -202,8 +219,8 @@ class Amount {
     }
     for (var i = 0; i < other.unverifiedReceipts.length; i++) {
       var removed = false
-      for (var j = 0; j < this.unverifiedReceipts; j++) {
-        if (this.unverifiedReceipts[j].receipt == verified[i]) {
+      for (var j = 0; j < this.unverifiedReceipts.length; j++) {
+        if (this.unverifiedReceipts[j].receipt == other.unverifiedReceipts[i].receipt) {
           this.unverifiedReceipts.splice(j, 1)
           removed = true
           break
@@ -216,28 +233,32 @@ class Amount {
   }
 
   xrp () {
-    const xrp = this.unverified.get('XRP')
     var unverified = 0
-    if (xrp != null) {
-      unverified = xrp.significand * 10 ** xrp.exponent
+    {
+      const xrp = this.unverified.get('XRP')
+      if (xrp != null) {
+        unverified = xrp.significand * 10 ** xrp.exponent
+      }
     }
 
-    const xrpVerified = this.verified.get('XRP')
     var verified = 0
-    if (xrp != null) {
-      verified = xrp.significand * 10 ** xrp.exponent
+    {
+      const xrp = this.verified.get('XRP')
+      if (xrp != null) {
+        verified = xrp.significand * 10 ** xrp.exponent
+      }
     }
 
     return unverified + verified
   }
 
   isEmpty () {
-    for (const [assetCode, { significand, exponent }] of this.unverified) {
+    for (const [_assetCode, { significand, exponent: _ }] of this.unverified) {
       if (significand != 0) {
         return false
       }
     }
-    for (const [assetCode, { significand, exponent }] of this.verified) {
+    for (const [_assetCode, { significand, exponent: _ }] of this.verified) {
       if (significand != 0) {
         return false
       }
@@ -251,14 +272,14 @@ class Amount {
   }
 
   // Converts as much as possible to desired currency
-  async inCurrency (exchange, currency) {
+  async inCurrency (exchange: Exchange, currency: Currency): Promise<Amount> {
     var converted = new Amount(true)
-    const maps = [[this.unverified, false], [this.verified, true]]
+    const maps: [Map<string, SingleAmount>, boolean][] = [[this.unverified, false], [this.verified, true]]
     for (var i = 0; i < maps.length; i++) {
       for (const [assetCode, { significand, exponent }] of maps[i][0]) {
         var base = Exchange.currencyFromInterledgerCode(assetCode)
-        var newAssetCode
-        var newAmount
+        var newAssetCode: string
+        var newAmount: number
         if (base == null) {
           console.log("Couldn't convert from " + assetCode + '. Not found in list.')
           newAssetCode = assetCode
@@ -287,11 +308,11 @@ class Amount {
     return converted
   }
 
-  displayInDuration (duration) {
+  displayInDuration (duration: number): string {
     return this.display(duration)
   }
 
-  display (duration) {
+  display (duration: number | null = null): string {
     var display = ''
     var first = true
 
@@ -353,26 +374,44 @@ class Amount {
   }
 }
 
-class Receipts {
+export type SerializedReceipts = {
+   seq: number,
+   unverified: ReceiptUnverified[],
+   verified: ReceiptVerified[],
+}
+
+type ReceiptUnverified = { receipt: string, seq: number }
+type ReceiptVerified = {
+  receipt: string,
+  seq: number,
+  verified?: boolean,
+  amount?: Amount,
+  spspEndpoint?: string,
+}
+export class Receipts {
+  seq: number;
+  unverified: ReceiptUnverified[];
+  verified: ReceiptVerified[];
+  
   constructor () {
     this.seq = 100
     this.unverified = []
     this.verified = []
   }
 
-  toCheck (receipt) {
+  toCheck (receipt: string): number {
     this.unverified.push({ receipt: receipt, seq: this.seq })
     return this.seq++
   }
 
-  retrieve (seq) {
+  retrieve (seq: number): null | ReceiptVerified {
     if (this.verified.length == 0) {
       return null
     }
     if (seq != seq >> 0) {
       throw 'Receipt `retrieve` passed non-integer'
     }
-    const off = seq - this.verified[0]
+    const off = seq - this.verified[0].seq
     if (0 <= off && off < this.verified.length) {
       if (this.verified[off].seq != seq) {
         throw 'Reqceipt `seq` error'
@@ -380,7 +419,7 @@ class Receipts {
         return this.verified[off]
       }
     } else {
-      if (seq < this.verified[0]) {
+      if (seq < this.verified[0].seq) {
         throw 'Asked for receipt ' + seq + ', but those before ' + this.verified[0] + ' were discarded'
       }
       if (this.seq < seq) {
@@ -398,12 +437,11 @@ class Receipts {
       console.error('TOO MANY RECEIPTS')
       this.unverified = []
     }
-    while (0 < this.unverified.length) {
+    for (var receiptData = this.unverified.shift(); receiptData != null; receiptData = this.unverified.shift()) {
       // Receipts must be verified in order, or they expire
-      const receiptData = this.unverified.shift()
       console.log(receiptData.seq + ' ' + receiptData.receipt)
       try {
-        const res = await fetch('https://webmonetization.org/api/receipts/verify',
+        const res = await window.fetch('https://webmonetization.org/api/receipts/verify',
           {
             method: 'POST',
             body: receiptData.receipt
@@ -439,24 +477,20 @@ class Receipts {
           // This should never happen, so... assume we did something wrong and skip that receipt
           continue
         }
-        this.verified.push({ receipt: receiptData.receipt, seq: receiptData.receipt, amount: resObj.amount, spspEndpoint: resObj.spspEndpoint })
+        this.verified.push({ receipt: receiptData.receipt, seq: receiptData.seq, amount: resObj.amount, spspEndpoint: resObj.spspEndpoint })
       } catch (e) {
         console.error(e)
-        this.unverified.unshift(receipt)
+        this.unverified.unshift(receiptData)
         break
       }
     }
   }
 
-  serialize () {
-    var ret = {}
-    ret.seq = this.seq
-    ret.unverified = this.unverified
-    ret.verified = this.verified
-    return ret
+  serialize (): SerializedReceipts {
+    return { seq: this.seq, unverified: this.unverified, verified: this.verified}
   }
 
-  static deserialize (obj) {
+  static deserialize (obj: any): Receipts {
     var ret = new Receipts()
     ret.seq = obj.seq
     ret.unverified = obj.unverified
@@ -469,19 +503,59 @@ class Receipts {
 // 15 seconds per bin
 const histogramBinSize = 15
 
+type Span = {
+  // Changes not committed to database
+  change: boolean,
+  // Timestamp of start
+  start: number,
+  // Timestamp of end
+  end: number,
+  // Payments during this span, both committed and uncommitted
+  paid: Amount,
+  // Payments during this span not committed
+  paidUncommitted: Amount,
+}
+
+// `bin` is only allowed when used in `VideoPaid.removeCommittedChanges`
+// only created by `VideoPaid.deserializeChanges` and `VideoPaid.deserializeHistogramChanges`
+type HistogramBin = { bin?: number, committed: Amount, uncommitted: Amount }
+export type SerializedHistogramBinUncommitted = { bin: number, uncommitted: SerializedAmount }
+
+type SerializedSpan = { start: number, end: number, paidUncommitted: SerializedAmount }
+export type SerializedChanges = {
+  nonce: string,
+  spans: SerializedSpan[],
+  histogram: SerializedHistogramBinUncommitted[],
+}
+
+
+export type SerializedVideoPaid = {
+  total: SerializedAmount,
+  spans: { start: number, end: number, paid: SerializedAmount }[]
+}
+
+export type SerializedState = {
+  currentState: SerializedVideoPaid,
+  committedChanges: SerializedChanges,
+  optOut: boolean,
+}
+
+
 // nonce: String; Changed after committed changes are acknowledged
 // total: Amount; Sum of `paid` of each span in `spans`
 // currentSpan: &Span; Reference to current span
 // currentSpanIdx: int; Index of `currentSpan` in `spans`
 // spans: [Span]; List of spans not in `base`, strictly increasing by `start` and not overlapping when having the same `change` value
-//   Each span contains
-//   change: bool; If this span has not been commited to the database
-//   start: float; Timestamp in video
-//   end: Option<float>; Timestamp in video (or null if current span)
-//   paid: Amount; Payments made during this span, both committed nad uncommitted
-//   paidUncommitted: Amount; Payments made during this span not committed
-// export
-class VideoPaid {
+export class VideoPaid {
+  nonce: string | null;
+  total: Amount;
+  sessionTime: number;
+  sessionTotal: Amount;
+  currentSpan: Span | null;
+  currentSpanIdx: number | null;
+  spans: Span[];
+  histogram: HistogramBin[];
+  
   constructor () {
     this.nonce = VideoPaid.generateNonce()
     this.total = new Amount(true)
@@ -493,7 +567,7 @@ class VideoPaid {
     this.histogram = []
   }
 
-  changesEmpty (instant) {
+  changesEmpty (instant: number): boolean {
     for (var i = 0; i < this.spans.length; i++) {
       if (this.spans[i].change) {
         if (this.spans[i].start != this.spans[i].end) {
@@ -506,7 +580,7 @@ class VideoPaid {
     return true
   }
 
-  startSpan (instant) {
+  startSpan (instant: number): { unpaid: boolean, nextPaid?: number | null, paidEnds?: number } {
     if (this.currentSpan != null) {
       console.log('web-monetization: VideoPaid.startSpan called before endSpan, data is lost')
       this.currentSpan = null
@@ -515,12 +589,12 @@ class VideoPaid {
     var next = null
     for (var i = 0; i < this.spans.length; i++) {
       if (instant < this.spans[i].start) {
-        this.spans.splice(i, 0, { change: true, start: instant, end: null, paid: new Amount(false), paidUncommitted: new Amount(false) })
+        this.spans.splice(i, 0, { change: true, start: instant, end: instant, paid: new Amount(false), paidUncommitted: new Amount(false) })
         this.currentSpan = this.spans[i]
         this.currentSpanIdx = i
         next = this.spans[i + 1]
         break
-      } else if (instant <= this.spans[i].end) {
+      } else if (this.spans[i].end == null || instant <= this.spans[i].end!) {
         this.currentSpan = this.spans[i]
         this.currentSpanIdx = i
         if (i < this.spans.length) {
@@ -531,12 +605,12 @@ class VideoPaid {
     }
 
     if (this.currentSpan == null) {
-      this.spans.splice(this.spans.length, 0, { change: true, start: instant, end: null, paid: new Amount(false), paidUncommitted: new Amount(false) })
+      this.spans.splice(this.spans.length, 0, { change: true, start: instant, end: instant, paid: new Amount(false), paidUncommitted: new Amount(false) })
       this.currentSpanIdx = this.spans.length - 1
       this.currentSpan = this.spans[this.currentSpanIdx]
     }
 
-    const unpaid = this.currentSpan.end == null || this.currentSpan.end == instant
+    const unpaid = this.currentSpan.end == instant
     if (unpaid) {
       if (next == null) {
         return { unpaid: true, nextPaid: null }
@@ -544,12 +618,12 @@ class VideoPaid {
         return { unpaid: true, nextPaid: next.start }
       }
     } else {
-      return { unpaid: false, paidEnds: this.currentSpan.end }
+      return { unpaid: false, paidEnds: this.currentSpan.end! }
     }
   }
 
-  endSpan (instant) {
-    if (this.currentSpan == null) {
+  endSpan (instant: number) {
+    if (this.currentSpan == null || this.currentSpanIdx == null) {
       console.log('web-monetization: VideoPaid.endSpan called before startSpan')
       return
     }
@@ -562,10 +636,10 @@ class VideoPaid {
     if (instant != null) {
       if (instant < this.currentSpan.start) {
         console.log('web-monetization: VideoPaid.endSpan called at ' + hms(instant) + ' which is earlier than span start ' + hms(this.currentSpan.start) + ', ignoring it')
+        console.log(this.display())
+        debugger
       }
-      if (this.currentSpan.end == null && this.currentSpan.start < instant) {
-        this.sessionTime += instant - this.currentSpan.start
-      } else if (this.currentSpan.end < instant) {
+      if (this.currentSpan.end < instant) {
         this.sessionTime += instant - this.currentSpan.end
       }
       this.currentSpan.end = Math.max(this.currentSpan.end, instant)
@@ -596,7 +670,7 @@ class VideoPaid {
     this.currentSpan = null
   }
 
-  deposit (instant, significand, exponent, assetCode, receipt) {
+  deposit (instant: number | null, significand: number, exponent: number, assetCode: string, receipt: any) {
     if (significand == 0) {
       return
     }
@@ -624,47 +698,41 @@ class VideoPaid {
       }
     }
 
-    const bin = (instant / histogramBinSize) >> 0
-    while (this.histogram.length <= bin) {
-      this.histogram.push({ committed: new Amount(false), uncommitted: new Amount(false) })
+    if (instant != null) {
+      const bin = (instant / histogramBinSize) >> 0
+      while (this.histogram.length <= bin) {
+        this.histogram.push({ committed: new Amount(false), uncommitted: new Amount(false) })
+      }
+      // Receipt is used above, cannot be verified twice
+      // TODO: may be possible to have it reference other receipt
+      this.histogram[bin].uncommitted.deposit(significand, exponent, assetCode, false, null)
     }
-    // Receipt is used above, cannot be verified twice
-    // TODO: may be possible to have it reference other receipt
-    this.histogram[bin].uncommitted.deposit(significand, exponent, assetCode, false, null)
   }
 
-  totalTime (instant) {
+  totalTime (instant: number | null): number {
     var sum = 0
     for (const span of this.spans) {
-      if (span.end != null) {
-        sum += span.end - span.start
-      } else if (instant != null) {
-        sum += instant - span.start
-      }
+      sum += span.end - span.start
     }
-    if (this.currentSpan != null && this.currentSpan.end != null && this.currentSpan.end < instant) {
+    if (instant != null && this.currentSpan != null && this.currentSpan.end < instant) {
       sum += instant - this.currentSpan.end
     }
     return sum
   }
 
-  getSessionTime (instant) {
-    if (this.currentSpan == null) {
-      return this.sessionTime
-    } else if (this.currentSpan.end == null) {
-      return this.sessionTime + instant - this.currentSpan.start
-    } else if (this.currentSpan.end < instant) {
+  getSessionTime (instant: number | null): number {
+    if (instant != null && this.currentSpan != null && this.currentSpan.end < instant) {
       return this.sessionTime + instant - this.currentSpan.end
     } else {
       return this.sessionTime
     }
   }
 
-  displayTotal () {
+  displayTotal (): string {
     return this.total.display()
   }
 
-  display () {
+  display (): string {
     var display = ''
     for (const span of this.spans) {
       if (span.change) {
@@ -675,7 +743,7 @@ class VideoPaid {
       if (span.end == null) {
         display += 'playing...'
       } else {
-        display += hms(span.end, 10)
+        display += hms(span.end)
       }
       display += '    ' + span.paid.display()
       if (span.end != null) {
@@ -699,7 +767,7 @@ class VideoPaid {
     return nonce
   }
 
-  removeCommittedChanges (committed) {
+  removeCommittedChanges (committed: VideoPaid) {
     // committed nonce is null when only histogram (which should be changed)
     if (committed.nonce != null && committed.nonce != this.nonce) {
       throw '`VideoPaid.removeCommittedChanges` nonces differ ' + committed.nonce + ' ' + this.nonce
@@ -707,47 +775,48 @@ class VideoPaid {
     this.nonce = VideoPaid.generateNonce()
 
     var c = committed
-    for (var i = 0; i < c.spans; i++) {
-      var j = 0
-      while (j < this.spans.length) {
-        if (this.spans[j].change) {
-          if ((this.spans[j].start <= c.spans[i].start && c.spans[i].start <= this.spans[j].end)
-            || (this.spans[j].start <= c.spans[i].end && c.spans[i].end <= this.spans[j].end)) {
-            // `c` span overlaps `this` span
-            this.spans[j].paidUncommitted.subtract(c.spans[i].paidUncommitted)
-            if (Math.abs(c.spans[i].start - this.spans[j].start) < 0.01) {
-              // Start's are identical
-              if (Math.abs(c.spans[i].end - this.spans[j].end) < 0.01) {
-                // Ends are the same
-                if (this.spans[j].paidUncommitted.isEmpty()) {
-                  this.spans.splice(j, 1)
-                // `j` stays the same
-                } else {
-                  // The additional payments must still be committed, leave span marked `change`
-                  j++
-                }
-              } else {
-                // Ends differ
-                if (c.spans[i].end < this.spans[j].end) {
-                  this.spans[j].start = c.spans[i].end
-                } else {
-                  throw 'Committed ends after uncommitted span'
-                }
-              }
-            } else {
-              // Starts differ
-              if (this.spans[j].start < c.spans[i].start) {
-                if (Math.abs(c.spans[i].end - this.spans[j].end) < 0.01) {
-                  this.spans[j].end = c.spans[i].start
-                } else if (c.spans[i].end < this.spans[j].end) {
-                  throw 'VideoPaid unreachable 78458'
-                } else {
-                  throw 'VideoPaid unreachable 54899'
-                }
-              } else {
-                throw 'Committed starts before uncommitted span'
-              }
+    for (var i = 0; i < c.spans.length; i++) {
+      for (var j = 0; j < this.spans.length; /* manually increment */) {
+        if (!this.spans[j].change) {
+          j += 1
+          continue
+        }
+        
+        if (!((this.spans[j].start <= c.spans[i].start && c.spans[i].start <= this.spans[j].end)
+          || (this.spans[j].start <= c.spans[i].end && c.spans[i].end <= this.spans[j].end))) {
+          // `c` span does not overlaps `this` span
+          j += 1
+          continue
+        }
+        
+        this.spans[j].paidUncommitted.subtract(c.spans[i].paidUncommitted)
+        if (Math.abs(c.spans[i].start - this.spans[j].start) < 0.01) {
+          // Start's are identical
+          if (Math.abs(c.spans[i].end - this.spans[j].end) < 0.01) {
+            // Ends are the same
+            if (this.spans[j].paidUncommitted.isEmpty()) {
+              this.spans.splice(j, 1)
             }
+          } else {
+            // Ends differ
+            if (c.spans[i].end < this.spans[j].end) {
+              this.spans[j].start = c.spans[i].end
+            } else {
+              throw 'Committed ends after uncommitted span'
+            }
+          }
+        } else {
+          // Starts differ
+          if (this.spans[j].start < c.spans[i].start) {
+            if (Math.abs(c.spans[i].end - this.spans[j].end) < 0.01) {
+              this.spans[j].end = c.spans[i].start
+            } else if (c.spans[i].end < this.spans[j].end) {
+              throw 'VideoPaid unreachable 78458'
+            } else {
+              throw 'VideoPaid unreachable 54899'
+            }
+          } else {
+            throw 'Committed starts before uncommitted span'
           }
         }
       }
@@ -755,13 +824,14 @@ class VideoPaid {
 
     for (var i = 0; i < c.histogram.length; i++) {
       var bin = c.histogram[i]
-      var amount = Amount.deserialize(bin.uncommitted)
-      this.histogram[bin.bin].uncommitted.subtract(amount)
-      this.histogram[bin.bin].committed.moveFrom(amount)
+      var binIdx = bin.bin || i
+      var amount = bin.uncommitted
+      this.histogram[binIdx].uncommitted.subtract(amount)
+      this.histogram[binIdx].committed.moveFrom(amount)
     }
   }
 
-  updateState (state) {
+  updateState (state: VideoPaidStorage) {
     for (var i = 0; i < this.spans.length; i++) {
       if (this.spans[i].change == false) {
         this.spans.splice(i, 1)
@@ -789,14 +859,17 @@ class VideoPaid {
     }
   }
 
-  serializeChanges (instant) {
+  serializeChanges (instant: number): SerializedChanges {
     if (this.currentSpan != null) {
       if (this.currentSpan.end == null || this.currentSpan.end < instant) {
         this.currentSpan.end = instant
         this.currentSpan.change = true
       }
     }
-    var changes = { nonce: this.nonce, spans: [], histogram: [] }
+    if (this.nonce == null) {
+      throw 'nonce cannot be null in `VideoPaid.serializeChanges`'
+    }
+    var changes: SerializedChanges = { nonce: this.nonce, spans: [], histogram: [] }
     for (var i = 0; i < this.spans.length; i++) {
       if (this.spans[i].change) {
         changes.spans.push({
@@ -808,7 +881,7 @@ class VideoPaid {
     }
 
     // 480 bins for a 2 hr movie
-    // TODO: maybe optimzie to insanely long videos
+    // TODO: maybe optimize for insanely long videos
     for (var i = 0; i < this.histogram.length; i++) {
       if (!this.histogram[i].uncommitted.isEmpty()) {
         changes.histogram.push({ bin: i, uncommitted: this.histogram[i].uncommitted.serialize() })
@@ -818,19 +891,30 @@ class VideoPaid {
     return changes
   }
 
-  static deserializeHistogramChanges (obj) {
+  static deserializeHistogramChanges (obj: SerializedHistogramBinUncommitted[]): VideoPaid {
     var ret = new VideoPaid()
     ret.nonce = null
-    // See not about lack of deserialization below
-    ret.histogram = obj
+    for (var i = 0; i < obj.length; i++) {
+      ret.histogram.push({
+        bin: obj[i].bin,
+        committed: new Amount(),
+        uncommitted: Amount.deserialize(obj[i].uncommitted),
+      })
+    }
     return ret
   }
 
-  static deserializeChanges (obj) {
+  static deserializeChanges (obj: SerializedChanges): VideoPaid {
     var ret = new VideoPaid()
     // We don't deserialize the histogram, as it is more useful serialized
     // just remember to deserialize the `Amount`s contained
-    ret.histogram = obj.histogram
+    for (var i = 0; i < obj.histogram.length; i++) {
+      ret.histogram.push({
+        bin: obj.histogram[i].bin,
+        committed: new Amount(),
+        uncommitted: Amount.deserialize(obj.histogram[i].uncommitted),
+      })
+    }
     ret.nonce = obj.nonce
     for (var i = 0; i < obj.spans.length; i++) {
       const from = obj.spans[i]
@@ -847,28 +931,26 @@ class VideoPaid {
   }
 }
 
+type SpanStorage = { start: number, end: number, paid: Amount }
 // export
-class VideoPaidStorage {
+export class VideoPaidStorage {
+  total: Amount;
+  spans: SpanStorage[];
+  
   constructor () {
     this.total = new Amount(true)
     this.spans = []
   }
 
-  async verifyReceipts (verified) {
-    var verifiedStart = 0
-    if (verified == null) {
-      verified = []
-    } else {
-      verifiedStart = verified.length
-    }
+  async verifyReceipts () {
     for (var i = 0; i < this.spans.length; i++) {
-      await this.spans[i].paid.verifyReceipts(verified)
+      await this.spans[i].paid.verifyReceipts()
     }
-    this.total.acceptReceipts(verified.splice(verifiedStart))
+    this.total.acceptReceipts()
   }
 
-  serialize () {
-    var ret = {
+  serialize (): SerializedVideoPaid {
+    var ret: SerializedVideoPaid = {
       total: this.total.serialize(),
       spans: []
     }
@@ -882,7 +964,7 @@ class VideoPaidStorage {
     return ret
   }
 
-  static deserialize (obj) {
+  static deserialize (obj: SerializedVideoPaid): VideoPaidStorage {
     var ret = new VideoPaidStorage()
     ret.total = Amount.deserialize(obj.total)
     for (var i = 0; i < obj.spans.length; i++) {
@@ -895,13 +977,14 @@ class VideoPaidStorage {
     return ret
   }
 
-  // Merge in changes `c` serizlized from `VideoPaid`,
-  commitChanges (c) {
+  // Merge in changes `c` serialized from `VideoPaid`,
+  commitChanges (c: SerializedChanges) {
     // assumes that `spans` in `this` is sorted such that the spans strictly increase by `start` and do not overlap
     var changed = false
     for (var i = 0; i < c.spans.length; i++) {
+      const paidUncommitted = Amount.deserialize(c.spans[i].paidUncommitted)
       // Span is empty
-      if (c.spans[i].start == c.spans[i].end && c.spans[i].paidUncommitted.isEmpty()) {
+      if (c.spans[i].start == c.spans[i].end && paidUncommitted.isEmpty()) {
         continue
       }
       var spanMerged = false
@@ -911,8 +994,8 @@ class VideoPaidStorage {
             // c: [#####]----------
             //  this: ---------[####]--
             // final: [#####]--[####]--
-            this.spans.splice(j, 0, { start: c.spans[i].start, end: c.spans[i].end, paid: c.spans[i].paidUncommitted })
-            this.total.addFrom(c.spans[i].paidUncommitted)
+            this.spans.splice(j, 0, { start: c.spans[i].start, end: c.spans[i].end, paid: paidUncommitted })
+            this.total.addFrom(paidUncommitted)
             spanMerged = true
             break
           } else {
@@ -921,8 +1004,8 @@ class VideoPaidStorage {
             //  this: ----[####]-------
             // final: [########]-------
             this.spans[j].start = c.spans[i].start
-            this.spans[j].paid.moveFromMakeReference(c.spans[i].paidUncommitted)
-            this.total.addFrom(c.spans[i].paidUncommitted)
+            this.spans[j].paid.moveFromMakeReference(paidUncommitted)
+            this.total.addFrom(paidUncommitted)
             spanMerged = true
             break
           }
@@ -938,8 +1021,8 @@ class VideoPaidStorage {
             // final A: --[#########]----
             // final B: --[#############]
             this.spans[j].end = c.spans[i].end
-            this.spans[j].paid.moveFromMakeReference(c.spans[i].paidUncommitted)
-            this.total.addFrom(c.spans[i].paidUncommitted)
+            this.spans[j].paid.moveFromMakeReference(paidUncommitted)
+            this.total.addFrom(paidUncommitted)
             // Now, we must handle a case such as:
             //   c: ------[#####]----
             //    this: --[####]-[#][###]
@@ -959,8 +1042,8 @@ class VideoPaidStorage {
         // c: ---------[#####]-
         //  this: --[####]---------
         // final: --[####] [#####]-
-        this.spans.push({ start: c.spans[i].start, end: c.spans[i].end, paid: c.spans[i].paidUncommitted })
-        this.total.addFrom(c.spans[i].paidUncommitted)
+        this.spans.push({ start: c.spans[i].start, end: c.spans[i].end, paid: paidUncommitted })
+        this.total.addFrom(paidUncommitted)
       }
       changed = true
     }
@@ -968,14 +1051,24 @@ class VideoPaidStorage {
   }
 }
 
-function roundTo (value, places) {
+function roundTo (value: number, places: number): number {
   const precision = 10 ** Math.ceil(places)
   return Math.round(value * precision) / precision
 }
 
 // Currencies supported by CoinGecko. They may change them, but we would need to update the additional details anyway.
 // `coinGeckoId` only listed when supported by API
-const quoteCurrencies = {
+export type Currency = {
+  coinGeckoQuote: string,
+  coinGeckoId: string | null,
+  network: string,
+  nameSingular: string,
+  namePlural: string,
+  code: string,
+  symbol: string | null,
+}
+
+export const quoteCurrencies: Record<string, Currency> = {
   btc: { coinGeckoQuote: 'btc', coinGeckoId: 'bitcoin', network: 'Bitcoin', nameSingular: 'bitcoin', namePlural: 'bitcoins', code: 'BTC', symbol: '₿' },
   eth: { coinGeckoQuote: 'eth', coinGeckoId: 'ethereum', network: 'Ethereum', nameSingular: 'ether', namePlural: 'ether', code: 'ETH', symbol: 'Ξ' },
   ltc: { coinGeckoQuote: 'ltc', coinGeckoId: 'litecoin', network: 'Litecoin', nameSingular: 'litecoin', namePlural: 'litecoins', code: 'LTC', symbol: null },
@@ -1040,7 +1133,7 @@ const quoteCurrencies = {
 }
 
 // I've only seen XRP, include others mentioned on the Interledger GitHub page, excluding EUR as it needs a trustworthy stablecoin on CoinGecko
-const interledgerCurrencies = {
+const interledgerCurrencies: Record<string, Currency> = {
   xrp: quoteCurrencies['xrp'],
   btc: quoteCurrencies['btc'],
   eth: quoteCurrencies['eth'],
@@ -1049,18 +1142,21 @@ const interledgerCurrencies = {
 
 }
 
-class Exchange {
-  constructor (apiEndpoint) {
+export class Exchange {
+  apiEndpoint: string;
+  assets: Map<string, Map<string, { price: number, lastUpdate: number | null }>>;
+  
+  constructor (apiEndpoint: string = 'https://api.coingecko.com/api')  {
     // TODO: Proxy client requests through server, so we don't use their API so much
-    this.apiEndpoint = 'https://api.coingecko.com/api' // apiEndpoint
+    this.apiEndpoint = apiEndpoint
     this.assets = new Map()
   }
 
-  static currencyFromInterledgerCode (assetCode) {
+  static currencyFromInterledgerCode (assetCode: string): Currency {
     return interledgerCurrencies[assetCode.toLowerCase()]
   }
 
-  async getPrice (base, quote) {
+  async getPrice (base: Currency, quote: Currency): Promise<number> {
     var inverse = false
     if (base.coinGeckoId == null) {
       if (quote.coinGeckoId != null && base.coinGeckoQuote != null) {
@@ -1083,13 +1179,11 @@ class Exchange {
       }
     }
 
-    var baseData = null
-    if (this.assets.has(base)) {
-      baseData = this.assets.get(base)
-    } else {
-      if (this.assets.has(quote) && quote.coinGeckoId != null && base.coinGeckoQuote != null) {
-        var quoteData = this.assets.get(quote)
-        var inversePrice = quoteData.get(base)
+    var baseData = this.assets.get(base.code)
+    if (baseData == null) {
+      var quoteData = this.assets.get(quote.code)
+      if (quoteData != null && quote.coinGeckoId != null && base.coinGeckoQuote != null) {
+        var inversePrice = quoteData.get(base.code)
         if (inversePrice != null) {
           inverse = !inverse
           const tmp = quote
@@ -1100,14 +1194,15 @@ class Exchange {
       }
 
       if (baseData == null) {
-        this.assets.set(base, new Map())
-        baseData = this.assets.get(base)
+        this.assets.set(base.code, new Map())
+        baseData = this.assets.get(base.code)!
       }
     }
-    if (!baseData.has(quote)) {
-      baseData.set(quote, { price: 0.0, lastUpdate: null })
+    var price = baseData.get(quote.code)
+    if (price == null) {
+      baseData.set(quote.code, { price: 0.0, lastUpdate: null })
+      price = baseData.get(quote.code)!
     }
-    var price = baseData.get(quote)
 
     if (price.lastUpdate == null || 4 * 3600 * 1000 < Date.now() - price.lastUpdate) {
       var res = await fetch(this.apiEndpoint + '/v3/simple/price?ids=' + base.coinGeckoId + '&vs_currencies=' + quote.coinGeckoQuote, {
@@ -1115,11 +1210,11 @@ class Exchange {
         headers: { accept: 'application/json' }
       })
       const resData = await res.json()
-      if (resData[base.coinGeckoId] == null || resData[base.coinGeckoId][quote.coinGeckoQuote] == null) {
+      if (resData[base.coinGeckoId!] == null || resData[base.coinGeckoId!][quote.coinGeckoQuote] == null) {
         console.error(resData)
         throw 'web-monetization: paid.js Exchange: API bad'
       }
-      price.price = resData[base.coinGeckoId][quote.coinGeckoQuote]
+      price.price = resData[base.coinGeckoId!][quote.coinGeckoQuote]
       price.lastUpdate = Date.now()
     }
 
@@ -1130,11 +1225,3 @@ class Exchange {
     }
   }
 }
-
-module.exports = {
-  Amount,
-  Receipts,
-  VideoPaid,
-  VideoPaidStorage,
-  quoteCurrencies,
-Exchange}
