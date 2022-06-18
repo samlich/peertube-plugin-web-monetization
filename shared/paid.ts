@@ -340,7 +340,7 @@ export class Amount {
             display += roundTo(rate, 8) + ' ' + assetCode + '/10m'
           }
         } else {
-          const rounded = roundTo(rate, 5 + -exponent)
+          const rounded = roundTo(rate, 3 + -exponent)
           if (currency != null && currency.symbol != null) {
             display += currency.symbol + rounded.toExponential() + '/10m'
           } else {
@@ -356,7 +356,7 @@ export class Amount {
             display += roundTo(amount, 8) + ' ' + assetCode
           }
         } else {
-          const rounded = roundTo(amount, 5 + -exponent)
+          const rounded = roundTo(amount, 3 + -exponent)
           if (currency != null && currency.symbol != null) {
             display += currency.symbol + rounded.toExponential()
           } else {

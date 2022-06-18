@@ -307,6 +307,26 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
       currencySelect.classList.add('peertube-button')
       currencySelect.classList.add('grey-button')
       currencySelect.setAttribute('style', 'margin-top:0.5em;margin-bottom:0.5em;margin-right:0.5em;')
+      
+      var foundDisplayCurrency = false
+      var commonCurrencies = ['usd', 'eur', 'xrp']
+      for (var i = 0; i < commonCurrencies.length; i++) {
+        const currency = quoteCurrencies[commonCurrencies[i]]
+        var option = doc.createElement('option')
+        option.innerText = currency.code + ' ' + currency.network
+        option.value = currency.code
+        currencySelect.appendChild(option)
+        if (currency.code == displayCurrency.code) {
+          currencySelect.selectedIndex = i
+          foundDisplayCurrency = true
+        }
+      }
+      
+      var option = doc.createElement('option')
+      option.innerText = '================'
+      option.value = 'USD'
+      currencySelect.appendChild(option)
+      
       var codes = Object.keys(quoteCurrencies)
       for (var i = 0; i < codes.length; i++) {
         const currency = quoteCurrencies[codes[i]]
@@ -314,7 +334,7 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
         option.innerText = currency.code + ' ' + currency.network
         option.value = currency.code
         currencySelect.appendChild(option)
-        if (currency.code == displayCurrency.code) {
+        if (currency.code == displayCurrency.code && !foundDisplayCurrency) {
           currencySelect.selectedIndex = i
         }
       }
@@ -525,7 +545,7 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
               totalRevenue = new Amount(true)
               var significand = 0
               for (var i = 0; i < resData.histogram.parts.length; i++) {
-                allHistogramX.push(i * 15 / 60)
+                allHistogramX.push(i * 15000)
                 // `allHistogramY` set non-null a few lines above, `allHistogramY = resData.histogram.parts`
                 significand += allHistogramY![i]
               }
@@ -569,32 +589,45 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
               if (x != null) {
                 sum += x.significand * 10 ** x.exponent
               }
-              histogramX.push(i * 15 / 60)
+              histogramX.push(i * 15000)
               histogramData.push(sum)
             }
           } catch (e) {
             console.error(e)
           }
-          var histogramUser: Plotly.Data = {
+
+          var histogramUser: Partial<Plotly.PlotData> = {
             name: 'This session (histogram is not stored per-user)',
             x: histogramX,
             y: histogramData,
-            type: 'scatter',
-            mode: 'lines',
+            autobinx: false,
+            histfunc: 'sum',
+            xbins: {
+              start: 0,
+              end: 15000*Math.ceil(videoEl.duration/15),
+              size: 15000,
+            },
+            type: 'histogram',
             yaxis: 'y',
             opacity: 1.0,
             marker: {
               color: 'orange'
             }
           }
-          var histogramAll: Plotly.Data = {
+          var histogramAll: Partial<Plotly.PlotData> = {
             name: 'All users',
             x: allHistogramX!,
             y: allHistogramY!,
-            type: 'scatter',
-            mode: 'lines',
+            autobinx: false,
+            histfunc: 'sum',
+            xbins: {
+              start: 0,
+              end: 15000*Math.ceil(videoEl.duration/15),
+              size: 15000,
+            },
+            type: 'histogram',
             yaxis: 'y2',
-            opacity: 0.8,
+            opacity: 0.5,
             marker: {
               color: 'grey'
             }
@@ -605,13 +638,23 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
           } else {
             data = [histogramUser]
           }
+          var tickformat
+          var yUnit
+          if (3600 <= videoEl.duration) {
+            tickformat = '%H:%M:%S'
+            yUnit = 'hh:mm:ss'
+          } else {
+            tickformat = '%M:%S'
+            yUnit = 'mm:ss'
+          }
           var layout: any = {
             title: 'Contributions to Video at 15 Second Intervals',
-            xaxis: { title: 'Position in video (min)' },
-            yaxis: { title: 'Session contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
-            yaxis2: { title: 'All contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e', side: 'right', overlaying: 'y' },
+            xaxis: { title: 'Position in video ('+yUnit+')', type: 'date', tickformat, range: [0, videoEl.duration * 1000] },
+            yaxis: { title: 'Session contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: '.1e' },
+            yaxis2: { title: 'All contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: '.1e', side: 'right', overlaying: 'y' },
             legend: { orientation: 'h', xanchor: 'right', yanchor: 'top', x: 0.99, y: 0.99 },
-            showlegend: true
+            showlegend: true,
+            barmode: 'overlay'
           }
           if (histogramData.length != 0 || allHistogramX != null) {
             histogram.setAttribute('style', 'width:50em;height:30em;')
@@ -641,8 +684,8 @@ export function register ({ registerHook, peertubeHelpers }: RegisterClientOptio
             var data: Plotly.Data[] = [unknown, subscribed]
             var layout: any = {
               title: 'Contributions to Video by Day',
-              xaxis: { title: 'Day' },
-              yaxis: { title: 'Contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: 'e' },
+              xaxis: { title: 'Day', type: 'date', 'dtick': 86400000 },
+              yaxis: { title: 'Contributions (' + videoQuoteCurrency + ')', rangemode: 'nonnegative', tickformat: '.1e' },
               legend: { orientation: 'h', xanchor: 'right', yanchor: 'top', x: 0.99, y: 0.99 }
             }
             if (perDayX != null && perDayX.length != 0) {
